@@ -1,0 +1,26 @@
+# Simple HAL configuration for QtVCP simulator
+# No physical hardware - position commands loop directly to feedback
+
+loadrt [KINS]KINEMATICS
+loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[KINS]JOINTS
+
+# Add functions to servo thread
+addf motion-command-handler servo-thread
+addf motion-controller servo-thread
+
+# Estop loopback
+net estop-loop iocontrol.0.user-enable-out => iocontrol.0.emc-enable-in
+
+# Tool change loopback
+net tool-change iocontrol.0.tool-change => iocontrol.0.tool-changed
+net tool-prep iocontrol.0.tool-prepare => iocontrol.0.tool-prepared
+
+# Simulated machine - position command = position feedback
+net xpos-cmd joint.0.motor-pos-cmd => joint.0.motor-pos-fb
+net ypos-cmd joint.1.motor-pos-cmd => joint.1.motor-pos-fb
+net zpos-cmd joint.2.motor-pos-cmd => joint.2.motor-pos-fb
+
+# Home switches - always on for simulator
+setp joint.0.home-sw-in 1
+setp joint.1.home-sw-in 1
+setp joint.2.home-sw-in 1
