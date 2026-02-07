@@ -6,336 +6,310 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1295</width>
-    <height>853</height>
+    <width>1015</width>
+    <height>839</height>
    </rect>
+  </property>
+  <property name="font">
+   <font>
+    <family>Nimbus Sans Narrow [urw]</family>
+    <weight>75</weight>
+    <bold>true</bold>
+   </font>
   </property>
   <property name="windowTitle">
    <string>QtVCP Panel - Virtual Machine</string>
   </property>
   <property name="styleSheet">
-   <string notr="true"/>
+   <string notr="true">/* Base style for all Spindle Control buttons */
+QPushButton {
+    color: white;
+    font-weight: bold;
+    border: 2px solid #222222;
+    border-radius: 4px;
+    padding: 5px;
+    background-color: #555555; /* Default grey */
+}
+
+/* Specific button colors - Replace 'btn_fwd' etc. with your actual object names */
+
+#btn_fwd {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #2ecc71, stop:1 #27ae60); /* Green Gradient */
+    border-color: #1e8449;
+}
+
+#btn_rev {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #3498db, stop:1 #2980b9); /* Blue Gradient */
+    border-color: #1c5980;
+}
+
+#btn_stop {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #e74c3c, stop:1 #c0392b); /* Red Gradient */
+    border-color: #943126;
+}
+
+/* Hover Effects (Visual feedback when mouse is over button) */
+QPushButton:hover {
+    border-color: #ffffff;
+}
+
+/* Pressed Effect (Button looks like it's pushing in) */
+QPushButton:pressed {
+    background-color: #333333;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QLabel" name="label_title">
+   <widget class="QGroupBox" name="groupBox_jog_increment">
     <property name="geometry">
      <rect>
-      <x>760</x>
-      <y>10</y>
-      <width>244</width>
-      <height>40</height>
+      <x>-10</x>
+      <y>640</y>
+      <width>440</width>
+      <height>100</height>
      </rect>
     </property>
     <property name="minimumSize">
      <size>
       <width>0</width>
-      <height>40</height>
+      <height>100</height>
      </size>
     </property>
     <property name="maximumSize">
      <size>
       <width>16777215</width>
-      <height>40</height>
+      <height>100</height>
      </size>
     </property>
     <property name="font">
      <font>
-      <pointsize>16</pointsize>
+      <pointsize>10</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="title">
+     <string/>
+    </property>
+    <widget class="QLabel" name="label_jog_velocity">
+     <property name="geometry">
+      <rect>
+       <x>849</x>
+       <y>73</y>
+       <width>80</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>80</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+    </widget>
+    <widget class="QLabel" name="label_jog_2">
+     <property name="geometry">
+      <rect>
+       <x>90</x>
+       <y>30</y>
+       <width>170</width>
+       <height>25</height>
+      </rect>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>25</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>25</height>
+      </size>
+     </property>
+     <property name="font">
+      <font>
+       <family>Liberation Sans</family>
+       <pointsize>10</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>Jog Velocity: 500mm/min</string>
+     </property>
+     <property name="scaledContents">
+      <bool>true</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+    <widget class="QSlider" name="slider_jog_velocity">
+     <property name="geometry">
+      <rect>
+       <x>40</x>
+       <y>70</y>
+       <width>391</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">/* --- THE TRACK (The Groove) --- */
+QSlider::groove:horizontal {
+    border: 1px solid #3a3a3a;
+    height: 8px;
+    /* Creates a &quot;recessed&quot; look using a linear gradient */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #1a1a1a, stop:1 #333333);
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+/* --- THE FILLED PART (Left of the handle) --- */
+QSlider::sub-page:horizontal {
+    /* Glowing blue gradient for the 'active' side */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #5db7ff, stop:1 #2e78d2);
+    border: 1px solid #1c5aa3;
+    height: 8px;
+    border-radius: 4px;
+}
+
+/* --- THE HANDLE (The Thumb) --- */
+QSlider::handle:horizontal {
+    /* Glossy glass effect */
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #f6f7fa, stop:1 #babec5);
+    border: 1px solid #777;
+    width: 20px;
+    height: 20px;
+    margin: -7px 0; /* Centers the larger handle over the track */
+    border-radius: 10px; /* Circular */
+}
+
+/* --- INTERACTIVE STATES --- */
+
+/* Handle glowing on hover */
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #ffffff, stop:1 #d1d5db);
+    border: 1px solid #4A90E2; /* Blue border on hover */
+    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
+}
+
+/* Change the track color when the whole widget is hovered */
+QSlider::groove:horizontal:hover {
+    background: #252525;
+}
+
+/* Handle appearance when clicked/pressed */
+QSlider::handle:horizontal:pressed {
+    background: #2e78d2; /* Turns blue when you grab it */
+    border: 1px solid #ffffff;
+}</string>
+     </property>
+     <property name="minimum">
+      <number>10</number>
+     </property>
+     <property name="maximum">
+      <number>2000</number>
+     </property>
+     <property name="value">
+      <number>500</number>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="tickPosition">
+      <enum>QSlider::TicksBelow</enum>
+     </property>
+     <property name="tickInterval">
+      <number>500</number>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QLabel" name="label_jog">
+    <property name="geometry">
+     <rect>
+      <x>630</x>
+      <y>330</y>
+      <width>87</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>25</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>16777215</width>
+      <height>25</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <family>Liberation Sans</family>
+      <pointsize>10</pointsize>
       <weight>75</weight>
       <bold>true</bold>
      </font>
     </property>
     <property name="text">
-     <string/>
-    </property>
-    <property name="pixmap">
-     <pixmap>meukron.jpeg</pixmap>
-    </property>
-    <property name="scaledContents">
-     <bool>true</bool>
+     <string>Jog Controls</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
     </property>
    </widget>
-   <widget class="GCodeGraphics" name="gcode_graphics">
+   <widget class="QPushButton" name="btn_estop">
     <property name="geometry">
      <rect>
-      <x>30</x>
-      <y>10</y>
-      <width>611</width>
-      <height>571</height>
+      <x>190</x>
+      <y>100</y>
+      <width>100</width>
+      <height>45</height>
      </rect>
-    </property>
-    <property name="sizePolicy">
-     <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-      <horstretch>0</horstretch>
-      <verstretch>1</verstretch>
-     </sizepolicy>
     </property>
     <property name="minimumSize">
      <size>
-      <width>600</width>
-      <height>350</height>
+      <width>0</width>
+      <height>0</height>
      </size>
     </property>
-    <property name="background_color" stdset="0">
-     <color alpha="150">
-      <red>0</red>
-      <green>0</green>
-      <blue>0</blue>
-     </color>
+    <property name="maximumSize">
+     <size>
+      <width>100</width>
+      <height>45</height>
+     </size>
     </property>
-    <property name="jog_color" stdset="0">
-     <color alpha="0">
-      <red>0</red>
-      <green>0</green>
-      <blue>0</blue>
-     </color>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
     </property>
-   </widget>
-   <widget class="QWidget" name="layoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>660</x>
-      <y>300</y>
-      <width>324</width>
-      <height>224</height>
-     </rect>
-    </property>
-    <layout class="QGridLayout" name="gridLayout">
-     <item row="0" column="1">
-      <widget class="QPushButton" name="btn_jog_yplus">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>150</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>14</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>Y +</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="0">
-      <widget class="QPushButton" name="btn_jog_xminus">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>150</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>14</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>X -</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="1">
-      <widget class="QLabel" name="label_jog">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>30</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>16777215</width>
-         <height>30</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>12</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>Jog Controls</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="2">
-      <widget class="QPushButton" name="btn_jog_xplus">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>150</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>14</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>X +</string>
-       </property>
-      </widget>
-     </item>
-     <item row="2" column="1">
-      <widget class="QPushButton" name="btn_jog_yminus">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>150</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>14</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>Y -</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </widget>
-   <widget class="QWidget" name="layoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>1010</x>
-      <y>330</y>
-      <width>102</width>
-      <height>148</height>
-     </rect>
-    </property>
-    <layout class="QVBoxLayout" name="verticalLayout">
-     <item>
-      <widget class="QPushButton" name="btn_jog_zplus">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>150</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>14</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>Z +</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btn_jog_zminus">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>150</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>14</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>Z -</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </widget>
-   <widget class="QWidget" name="layoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>700</x>
-      <y>120</y>
-      <width>374</width>
-      <height>52</height>
-     </rect>
-    </property>
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <widget class="QPushButton" name="btn_estop">
-       <property name="minimumSize">
-        <size>
-         <width>120</width>
-         <height>50</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>120</width>
-         <height>50</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>12</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">/* Normal State */
+    <property name="styleSheet">
+     <string notr="true">/* Normal State */
 QPushButton {
     background-color: #ffcccc; /* Light Red/Pink */
     color: black;
@@ -354,38 +328,44 @@ QPushButton:checked {
 QPushButton:pressed {
     background-color: #4d0000;
 }</string>
-       </property>
-       <property name="text">
-        <string>E-STOP</string>
-       </property>
-       <property name="checkable">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btn_power">
-       <property name="minimumSize">
-        <size>
-         <width>120</width>
-         <height>50</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>120</width>
-         <height>50</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>12</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">/* Power is OFF */
+    </property>
+    <property name="text">
+     <string>E-STOP</string>
+    </property>
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_power">
+    <property name="geometry">
+     <rect>
+      <x>300</x>
+      <y>100</y>
+      <width>100</width>
+      <height>45</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>100</width>
+      <height>45</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">/* Power is OFF */
 QPushButton {
     background-color: #ff4d4d; /* Red */
     color: white;
@@ -406,38 +386,44 @@ QPushButton:pressed {
     background-color: #e0e0e0;
     color: black;
 }</string>
-       </property>
-       <property name="text">
-        <string>POWER </string>
-       </property>
-       <property name="checkable">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btn_home_all">
-       <property name="minimumSize">
-        <size>
-         <width>120</width>
-         <height>50</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>120</width>
-         <height>50</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>12</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">/* Not Homed */
+    </property>
+    <property name="text">
+     <string>POWER </string>
+    </property>
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_home_all">
+    <property name="geometry">
+     <rect>
+      <x>410</x>
+      <y>100</y>
+      <width>100</width>
+      <height>45</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>100</width>
+      <height>45</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">/* Not Homed */
 QPushButton {
     background-color: #e1e1e1;
     color: black;
@@ -450,11 +436,969 @@ QPushButton:checked {
     background-color: #3498db; /* Bright Blue */
     color: white;
 }</string>
+    </property>
+    <property name="text">
+     <string>HOME ALL</string>
+    </property>
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="GCodeGraphics" name="gcode_graphics">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>230</y>
+      <width>500</width>
+      <height>400</height>
+     </rect>
+    </property>
+    <property name="sizePolicy">
+     <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+      <horstretch>2</horstretch>
+      <verstretch>0</verstretch>
+     </sizepolicy>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>500</width>
+      <height>300</height>
+     </size>
+    </property>
+    <property name="background_color" stdset="0">
+     <color alpha="150">
+      <red>0</red>
+      <green>0</green>
+      <blue>0</blue>
+     </color>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_jog_xminus">
+    <property name="geometry">
+     <rect>
+      <x>530</x>
+      <y>310</y>
+      <width>94</width>
+      <height>60</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>120</width>
+      <height>60</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>X -</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_jog_xplus">
+    <property name="geometry">
+     <rect>
+      <x>730</x>
+      <y>310</y>
+      <width>94</width>
+      <height>60</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>120</width>
+      <height>60</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>X +</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_jog_yminus">
+    <property name="geometry">
+     <rect>
+      <x>630</x>
+      <y>390</y>
+      <width>94</width>
+      <height>60</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>120</width>
+      <height>60</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>Y -</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_jog_yplus">
+    <property name="geometry">
+     <rect>
+      <x>630</x>
+      <y>230</y>
+      <width>94</width>
+      <height>60</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>120</width>
+      <height>60</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>Y +</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_jog_zminus">
+    <property name="geometry">
+     <rect>
+      <x>800</x>
+      <y>150</y>
+      <width>94</width>
+      <height>60</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>120</width>
+      <height>60</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>Z -</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_jog_zplus">
+    <property name="geometry">
+     <rect>
+      <x>800</x>
+      <y>70</y>
+      <width>94</width>
+      <height>60</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>120</width>
+      <height>60</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>Z +</string>
+    </property>
+   </widget>
+   <widget class="QGroupBox" name="groupBox_feedrate">
+    <property name="geometry">
+     <rect>
+      <x>760</x>
+      <y>570</y>
+      <width>200</width>
+      <height>100</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>200</width>
+      <height>100</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>250</width>
+      <height>100</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="title">
+     <string>Feed Rate Override</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+    <widget class="QLabel" name="label_feedrate">
+     <property name="geometry">
+      <rect>
+       <x>40</x>
+       <y>30</y>
+       <width>44</width>
+       <height>23</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>12</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>100%</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+    <widget class="QSlider" name="slider_feedrate">
+     <property name="geometry">
+      <rect>
+       <x>17</x>
+       <y>66</y>
+       <width>88</width>
+       <height>23</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">/* --- THE TRACK (The Groove) --- */
+QSlider::groove:horizontal {
+    border: 1px solid #3a3a3a;
+    height: 8px;
+    /* Creates a &quot;recessed&quot; look using a linear gradient */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #1a1a1a, stop:1 #333333);
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+/* --- THE FILLED PART (Left of the handle) --- */
+QSlider::sub-page:horizontal {
+    /* Glowing blue gradient for the 'active' side */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #5db7ff, stop:1 #2e78d2);
+    border: 1px solid #1c5aa3;
+    height: 8px;
+    border-radius: 4px;
+}
+
+/* --- THE HANDLE (The Thumb) --- */
+QSlider::handle:horizontal {
+    /* Glossy glass effect */
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #f6f7fa, stop:1 #babec5);
+    border: 1px solid #777;
+    width: 20px;
+    height: 20px;
+    margin: -7px 0; /* Centers the larger handle over the track */
+    border-radius: 10px; /* Circular */
+}
+
+/* --- INTERACTIVE STATES --- */
+
+/* Handle glowing on hover */
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #ffffff, stop:1 #d1d5db);
+    border: 1px solid #4A90E2; /* Blue border on hover */
+    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
+}
+
+/* Change the track color when the whole widget is hovered */
+QSlider::groove:horizontal:hover {
+    background: #252525;
+}
+
+/* Handle appearance when clicked/pressed */
+QSlider::handle:horizontal:pressed {
+    background: #2e78d2; /* Turns blue when you grab it */
+    border: 1px solid #ffffff;
+}</string>
+     </property>
+     <property name="minimum">
+      <number>0</number>
+     </property>
+     <property name="maximum">
+      <number>200</number>
+     </property>
+     <property name="value">
+      <number>100</number>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="tickPosition">
+      <enum>QSlider::TicksBelow</enum>
+     </property>
+     <property name="tickInterval">
+      <number>25</number>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QGroupBox" name="groupBox_spindle">
+    <property name="geometry">
+     <rect>
+      <x>450</x>
+      <y>660</y>
+      <width>250</width>
+      <height>120</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>200</width>
+      <height>120</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>250</width>
+      <height>120</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="title">
+     <string>Spindle Control</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout_spindle">
+     <item>
+      <widget class="QLabel" name="label_spindle_speed">
+       <property name="font">
+        <font>
+         <family>Liberation Sans</family>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
        </property>
        <property name="text">
-        <string>HOME ALL</string>
+        <string>Speed: 0 RPM</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSlider" name="slider_spindle_speed">
+       <property name="styleSheet">
+        <string notr="true">/* --- THE TRACK (The Groove) --- */
+QSlider::groove:horizontal {
+    border: 1px solid #3a3a3a;
+    height: 8px;
+    /* Creates a &quot;recessed&quot; look using a linear gradient */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #1a1a1a, stop:1 #333333);
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+/* --- THE FILLED PART (Left of the handle) --- */
+QSlider::sub-page:horizontal {
+    /* Glowing blue gradient for the 'active' side */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #5db7ff, stop:1 #2e78d2);
+    border: 1px solid #1c5aa3;
+    height: 8px;
+    border-radius: 4px;
+}
+
+/* --- THE HANDLE (The Thumb) --- */
+QSlider::handle:horizontal {
+    /* Glossy glass effect */
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #f6f7fa, stop:1 #babec5);
+    border: 1px solid #777;
+    width: 20px;
+    height: 20px;
+    margin: -7px 0; /* Centers the larger handle over the track */
+    border-radius: 10px; /* Circular */
+}
+
+/* --- INTERACTIVE STATES --- */
+
+/* Handle glowing on hover */
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #ffffff, stop:1 #d1d5db);
+    border: 1px solid #4A90E2; /* Blue border on hover */
+    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
+}
+
+/* Change the track color when the whole widget is hovered */
+QSlider::groove:horizontal:hover {
+    background: #252525;
+}
+
+/* Handle appearance when clicked/pressed */
+QSlider::handle:horizontal:pressed {
+    background: #2e78d2; /* Turns blue when you grab it */
+    border: 1px solid #ffffff;
+}</string>
+       </property>
+       <property name="minimum">
+        <number>0</number>
+       </property>
+       <property name="maximum">
+        <number>24000</number>
+       </property>
+       <property name="value">
+        <number>1000</number>
+       </property>
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="tickPosition">
+        <enum>QSlider::TicksBelow</enum>
+       </property>
+       <property name="tickInterval">
+        <number>2000</number>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_spindle_buttons">
+       <item>
+        <widget class="QPushButton" name="btn_spindle_fwd">
+         <property name="styleSheet">
+          <string notr="true">background-color: rgb(0, 170, 0); color: white;</string>
+         </property>
+         <property name="text">
+          <string>FWD</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_spindle_rev">
+         <property name="styleSheet">
+          <string notr="true">background-color: rgb(0, 85, 170); color: white;</string>
+         </property>
+         <property name="text">
+          <string>REV</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_spindle_stop">
+         <property name="styleSheet">
+          <string notr="true">background-color: rgb(200, 100, 0); color: white;</string>
+         </property>
+         <property name="text">
+          <string>STOP</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </widget>
+   <widget class="QGroupBox" name="groupBox_rapidrate">
+    <property name="geometry">
+     <rect>
+      <x>760</x>
+      <y>660</y>
+      <width>200</width>
+      <height>100</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>200</width>
+      <height>100</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>250</width>
+      <height>100</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="title">
+     <string>Rapid Override</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout_rapidrate">
+     <item>
+      <widget class="QLabel" name="label_rapidrate">
+       <property name="font">
+        <font>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>100%</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSlider" name="slider_rapidrate">
+       <property name="styleSheet">
+        <string notr="true">/* --- THE TRACK (The Groove) --- */
+QSlider::groove:horizontal {
+    border: 1px solid #3a3a3a;
+    height: 8px;
+    /* Creates a &quot;recessed&quot; look using a linear gradient */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #1a1a1a, stop:1 #333333);
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+/* --- THE FILLED PART (Left of the handle) --- */
+QSlider::sub-page:horizontal {
+    /* Glowing blue gradient for the 'active' side */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 #5db7ff, stop:1 #2e78d2);
+    border: 1px solid #1c5aa3;
+    height: 8px;
+    border-radius: 4px;
+}
+
+/* --- THE HANDLE (The Thumb) --- */
+QSlider::handle:horizontal {
+    /* Glossy glass effect */
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #f6f7fa, stop:1 #babec5);
+    border: 1px solid #777;
+    width: 20px;
+    height: 20px;
+    margin: -7px 0; /* Centers the larger handle over the track */
+    border-radius: 10px; /* Circular */
+}
+
+/* --- INTERACTIVE STATES --- */
+
+/* Handle glowing on hover */
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #ffffff, stop:1 #d1d5db);
+    border: 1px solid #4A90E2; /* Blue border on hover */
+    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
+}
+
+/* Change the track color when the whole widget is hovered */
+QSlider::groove:horizontal:hover {
+    background: #252525;
+}
+
+/* Handle appearance when clicked/pressed */
+QSlider::handle:horizontal:pressed {
+    background: #2e78d2; /* Turns blue when you grab it */
+    border: 1px solid #ffffff;
+}</string>
+       </property>
+       <property name="minimum">
+        <number>0</number>
+       </property>
+       <property name="maximum">
+        <number>100</number>
+       </property>
+       <property name="value">
+        <number>100</number>
+       </property>
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="tickPosition">
+        <enum>QSlider::TicksBelow</enum>
+       </property>
+       <property name="tickInterval">
+        <number>25</number>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+   <widget class="QWidget" name="layoutWidget">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>132</width>
+      <height>209</height>
+     </rect>
+    </property>
+    <layout class="QGridLayout" name="gridLayout">
+     <item row="5" column="0">
+      <widget class="DROLabel" name="dro_z">
+       <property name="minimumSize">
+        <size>
+         <width>130</width>
+         <height>35</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">background-color: black; color: lime; border: 2px solid gray; padding: 3px;</string>
+       </property>
+       <property name="text">
+        <string>0.000</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="0">
+      <widget class="QLabel" name="label_x_axis">
+       <property name="font">
+        <font>
+         <pointsize>11</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>X Axis</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="label_y_axis">
+       <property name="font">
+        <font>
+         <pointsize>11</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Y Axis</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0">
+      <widget class="DROLabel" name="dro_y">
+       <property name="minimumSize">
+        <size>
+         <width>130</width>
+         <height>35</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">background-color: black; color: lime; border: 2px solid gray; padding: 3px;</string>
+       </property>
+       <property name="text">
+        <string>0.000</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="DROLabel" name="dro_x">
+       <property name="minimumSize">
+        <size>
+         <width>130</width>
+         <height>35</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">background-color: black; color: lime; border: 2px solid gray; padding: 3px;</string>
+       </property>
+       <property name="text">
+        <string>0.000</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QLabel" name="label_z_axis">
+       <property name="font">
+        <font>
+         <pointsize>11</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Z Axis</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+   <widget class="QGroupBox" name="">
+    <property name="geometry">
+     <rect>
+      <x>860</x>
+      <y>250</y>
+      <width>131</width>
+      <height>231</height>
+     </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">/* --- INACTIVE STATE (Default look from your image) --- */
+QPushButton {
+    background-color: #333333; /* Dark charcoal */
+    color: #FFFFFF;
+    font-family: &quot;Segoe UI&quot;, &quot;Arial&quot;;
+    font-size: 11pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 10px;
+    border-radius: 2px;
+}
+
+/* Hover effect */
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+
+/* --- ACTIVE STATE (The Yellow &quot;On&quot; State) --- */
+/* This triggers when the button is toggled/checked */
+QPushButton:checked {
+    background-color: #f1c40f; /* Vibrant Yellow */
+    color: #000000;            /* Black text for high contrast on yellow */
+    border: 2px solid #d4ac0d; /* Darker yellow border */
+}
+
+/* Optional: Different color when actually clicking down */
+QPushButton:pressed {
+    background-color: #f39c12; /* Orange-Yellow when pressed */
+    color: #000000;
+}</string>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout">
+     <item>
+      <widget class="QPushButton" name="btn_jog_continuous">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton#btn_continuous {
+    background-color: #333333;
+    color: white;
+    font: bold 11pt &quot;Segoe UI&quot;;
+    border: 1px solid #111;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 10px;
+}
+
+/* Added !important to force the color change */
+QPushButton#btn_continuous:checked {
+    background-color: #f1c40f !important;
+    color: #000000 !important;
+    border: 2px solid #d4ac0d;
+}</string>
+       </property>
+       <property name="text">
+        <string>Continuous</string>
        </property>
        <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="autoExclusive">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_jog_10mm">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>10 mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+       <property name="autoExclusive">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_jog_1mm">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>1 mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="autoExclusive">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_jog_0_1mm">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>0.1 mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="autoExclusive">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_jog_0_01mm">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>0.01 mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="autoExclusive">
         <bool>true</bool>
        </property>
       </widget>
@@ -468,6 +1412,12 @@ QPushButton:checked {
    <class>GCodeGraphics</class>
    <extends>QWidget</extends>
    <header>qtvcp.widgets.gcode_graphics</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>DROLabel</class>
+   <extends>QLabel</extends>
+   <header>qtvcp.widgets.dro_widget</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
