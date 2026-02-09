@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1015</width>
-    <height>839</height>
+    <height>1050</height>
    </rect>
   </property>
   <property name="font">
@@ -18,7 +18,7 @@
    </font>
   </property>
   <property name="windowTitle">
-   <string>QtVCP Panel - Virtual Machine</string>
+   <string>QtVCP Panel - Virtual Machine - Manual &amp; MDI</string>
   </property>
   <property name="styleSheet">
    <string notr="true">/* Base style for all Spindle Control buttons */
@@ -31,8 +31,7 @@ QPushButton {
     background-color: #555555; /* Default grey */
 }
 
-/* Specific button colors - Replace 'btn_fwd' etc. with your actual object names */
-
+/* Specific button colors */
 #btn_fwd {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
                 stop:0 #2ecc71, stop:1 #27ae60); /* Green Gradient */
@@ -51,12 +50,12 @@ QPushButton {
     border-color: #943126;
 }
 
-/* Hover Effects (Visual feedback when mouse is over button) */
+/* Hover Effects */
 QPushButton:hover {
     border-color: #ffffff;
 }
 
-/* Pressed Effect (Button looks like it's pushing in) */
+/* Pressed Effect */
 QPushButton:pressed {
     background-color: #333333;
     padding-top: 7px;
@@ -64,7 +63,107 @@ QPushButton:pressed {
 }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QGroupBox" name="groupBox_jog_increment">
+   <!-- MODE SELECTION BUTTONS -->
+   <widget class="QPushButton" name="btn_mode_manual">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>120</width>
+      <height>45</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+    background-color: #333333;
+    color: #FFFFFF;
+    font-family: "Segoe UI", "Arial";
+    font-size: 11pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 10px;
+    border-radius: 2px;
+}
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+QPushButton:checked {
+    background-color: #f1c40f;
+    color: #000000;
+    border: 2px solid #d4ac0d;
+}
+QPushButton:pressed {
+    background-color: #f39c12;
+    color: #000000;
+}</string>
+    </property>
+    <property name="text">
+     <string>MANUAL MODE</string>
+    </property>
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+    <property name="checked">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_mode_mdi">
+    <property name="geometry">
+     <rect>
+      <x>140</x>
+      <y>10</y>
+      <width>120</width>
+      <height>45</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+    background-color: #333333;
+    color: #FFFFFF;
+    font-family: "Segoe UI", "Arial";
+    font-size: 11pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 10px;
+    border-radius: 2px;
+}
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+QPushButton:checked {
+    background-color: #f1c40f;
+    color: #000000;
+    border: 2px solid #d4ac0d;
+}
+QPushButton:pressed {
+    background-color: #f39c12;
+    color: #000000;
+}</string>
+    </property>
+    <property name="text">
+     <string>MDI MODE</string>
+    </property>
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+   </widget>
+<widget class="QGroupBox" name="groupBox_jog_increment">
     <property name="geometry">
      <rect>
       <x>-10</x>
@@ -1400,6 +1499,367 @@ QPushButton#btn_continuous:checked {
        </property>
        <property name="autoExclusive">
         <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+
+    <item>
+     <!-- MDI MODE CONTROLS -->
+     <widget class="QGroupBox" name="groupBox_mdi">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>780</y>
+        <width>990</width>
+        <height>250</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>10</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="title">
+       <string>MDI - Manual Data Input</string>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_mdi">
+       <item>
+        <widget class="QLabel" name="label_mdi_input">
+         <property name="text">
+          <string>Enter G-code Command:</string>
+         </property>
+         <property name="font">
+          <font>
+           <family>Liberation Sans</family>
+           <pointsize>10</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="text_mdi_input">
+         <property name="minimumHeight">
+          <number>35</number>
+         </property>
+         <property name="font">
+          <font>
+           <pointsize>11</pointsize>
+          </font>
+         </property>
+         <property name="placeholderText">
+          <string>e.g., G0 X10 Y20 Z5  or  G1 X50 F100  or  M3 S1000</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_mdi_buttons">
+         <item>
+          <widget class="QPushButton" name="btn_mdi_execute">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>40</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>11</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">/* Power is ON style (green) */
+QPushButton {
+    background-color: #228b22; /* Forest Green */
+    color: white;
+    border: 2px solid #006400;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+/* Visual feedback when clicking */
+QPushButton:hover {
+    border-color: #ffffff;
+}
+
+QPushButton:pressed {
+    background-color: #e0e0e0;
+    color: black;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+           </property>
+           <property name="text">
+            <string>EXECUTE (Enter)</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btn_mdi_clear">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>40</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>11</pointsize>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">/* Orange button style */
+QPushButton {
+    background-color: #ff8c00; /* Dark Orange */
+    color: white;
+    border: 2px solid #cc7000;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+/* Visual feedback when clicking */
+QPushButton:hover {
+    border-color: #ffffff;
+}
+
+QPushButton:pressed {
+    background-color: #333333;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+           </property>
+           <property name="text">
+            <string>CLEAR HISTORY</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_mdi_history">
+         <property name="text">
+          <string>Command History:</string>
+         </property>
+         <property name="font">
+          <font>
+           <family>Liberation Sans</family>
+           <pointsize>10</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTextEdit" name="text_mdi_history">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>80</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>120</height>
+          </size>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+         <property name="font">
+          <font>
+           <family>Monospace</family>
+           <pointsize>10</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">background-color: #1e1e1e; color: #00ff00;</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   <!-- MDI MODE CONTROLS -->
+   <widget class="QGroupBox" name="groupBox_mdi">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>800</y>
+      <width>990</width>
+      <height>240</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="title">
+     <string>MDI - Manual Data Input</string>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout_mdi">
+     <item>
+      <widget class="QLabel" name="label_mdi_input">
+       <property name="text">
+        <string>Enter G-code Command:</string>
+       </property>
+       <property name="font">
+        <font>
+         <family>Liberation Sans</family>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="text_mdi_input">
+       <property name="minimumHeight">
+        <number>35</number>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>11</pointsize>
+        </font>
+       </property>
+       <property name="placeholderText">
+        <string>e.g., G0 X10 Y20 Z5  or  G1 X50 F100  or  M3 S1000</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_mdi_buttons">
+       <item>
+        <widget class="QPushButton" name="btn_mdi_execute">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="font">
+          <font>
+           <pointsize>11</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">QPushButton {
+    background-color: #228b22;
+    color: white;
+    border: 2px solid #006400;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #e0e0e0;
+    color: black;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+         </property>
+         <property name="text">
+          <string>EXECUTE (Enter)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_mdi_clear">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="font">
+          <font>
+           <pointsize>11</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">QPushButton {
+    background-color: #ff8c00;
+    color: white;
+    border: 2px solid #cc7000;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #333333;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+         </property>
+         <property name="text">
+          <string>CLEAR HISTORY</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_mdi_history">
+       <property name="text">
+        <string>Command History:</string>
+       </property>
+       <property name="font">
+        <font>
+         <family>Liberation Sans</family>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTextEdit" name="text_mdi_history">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>70</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>110</height>
+        </size>
+       </property>
+       <property name="readOnly">
+        <bool>true</bool>
+       </property>
+       <property name="font">
+        <font>
+         <family>Monospace</family>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">background-color: #1e1e1e; color: #00ff00;</string>
        </property>
       </widget>
      </item>
