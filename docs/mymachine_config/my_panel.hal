@@ -20,6 +20,12 @@ net j0pos joint.0.motor-pos-cmd => joint.0.motor-pos-fb
 net j1pos joint.1.motor-pos-cmd => joint.1.motor-pos-fb
 net j2pos joint.2.motor-pos-cmd => joint.2.motor-pos-fb
 
+# Joint amp fault signals - must be FALSE for joints to be enabled
+# In a simulator, we tie these to ground (FALSE = no fault)
+setp joint.0.amp-fault-in 0
+setp joint.1.amp-fault-in 0
+setp joint.2.amp-fault-in 0
+
 # Home switches - always on for simulator
 setp joint.0.home-sw-in 1
 setp joint.1.home-sw-in 1

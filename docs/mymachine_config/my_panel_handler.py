@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-QtVCP Panel Handler - COMPLETE with Manual & MDI Modes
-Version: 4.0 - FINAL WORKING VERSION
+QtVCP Panel Handler - Mode-Based Visibility Control
+Version: 6.0 - REORGANIZED LAYOUT WITH STRICT MODE VISIBILITY
 """
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QButtonGroup
+from PyQt5.QtWidgets import QButtonGroup, QFileDialog
+from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor
 from qtvcp.core import Status, Action, Info
 import linuxcnc
+import os
+import time
 
 STATUS = Status()
 ACTION = Action()
@@ -21,7 +24,7 @@ class HandlerClass:
         self.stat = linuxcnc.stat()
         
         # Jog settings
-        self.jog_speed = 500
+        self.jog_speed = 500  # mm/min
         self.jog_increment = 10.0
         self.jog_mode = "increment"
         
@@ -31,11 +34,17 @@ class HandlerClass:
         # Current mode
         self.current_mode = "MANUAL"
         
+        # Auto mode settings
+        self.loaded_program_path = None
+        self.loaded_program_lines = []
+        self.auto_feedrate_override = 100
+        self.last_highlighted_line = -1
+        
     def initialized__(self):
         """Called after widgets are initialized"""
         print("="*50)
-        print("QtVCP Panel with Manual & MDI Modes")
-        print("Version 4.0 - COMPLETE")
+        print("QtVCP Panel - Mode-Based Visibility Control")
+        print("Version 6.0 - REORGANIZED LAYOUT")
         print("="*50)
         
         # Configure DRO
@@ -45,6 +54,7 @@ class HandlerClass:
         self.mode_group = QButtonGroup()
         self.mode_group.addButton(self.w.btn_mode_manual)
         self.mode_group.addButton(self.w.btn_mode_mdi)
+        self.mode_group.addButton(self.w.btn_mode_auto)
         self.mode_group.setExclusive(True)
         
         # Setup jog increment button group
@@ -59,6 +69,7 @@ class HandlerClass:
         # Connect mode buttons
         self.w.btn_mode_manual.clicked.connect(self.switch_to_manual)
         self.w.btn_mode_mdi.clicked.connect(self.switch_to_mdi)
+        self.w.btn_mode_auto.clicked.connect(self.switch_to_auto)
         
         # Connect machine control buttons
         self.w.btn_estop.clicked.connect(self.toggle_estop)
@@ -69,6 +80,12 @@ class HandlerClass:
         self.w.btn_mdi_execute.clicked.connect(self.execute_mdi)
         self.w.btn_mdi_clear.clicked.connect(self.clear_mdi)
         self.w.text_mdi_input.returnPressed.connect(self.execute_mdi)
+        
+        # Connect Auto controls
+        self.w.btn_load_program.clicked.connect(self.load_program)
+        self.w.btn_cycle_start.clicked.connect(self.cycle_start)
+        self.w.btn_pause.clicked.connect(self.pause_program)
+        self.w.btn_stop.clicked.connect(self.stop_program)
         
         # Connect jog increment buttons
         self.w.btn_jog_continuous.clicked.connect(lambda: self.set_jog_increment("continuous"))
@@ -110,16 +127,28 @@ class HandlerClass:
         self.update_spindle_speed_display(self.w.slider_spindle_speed.value())
         self.update_jog_velocity(self.w.slider_jog_velocity.value())
         
-        # Set initial mode to MANUAL - hide MDI initially
-        self.w.groupBox_mdi.setVisible(False)
+        # Start in MANUAL mode - show manual controls, hide MDI and Auto
+        self.w.stackedWidget_modes.setCurrentIndex(0)  # Show page_manual
+        self.w.btn_mode_manual.setChecked(True)
+        
+        # Setup periodic status update timer
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.periodic_update)
+        self.timer.start(100)  # 100ms update rate
         
         print("\n*** STARTUP SEQUENCE ***")
         print("1. Click E-STOP to clear")
         print("2. Click POWER ON")
         print("3. Click HOME ALL")
         print("4. Select mode:")
-        print("   - MANUAL MODE: Use jog buttons and spindle controls")
-        print("   - MDI MODE: Enter G-code commands")
+        print("   - MANUAL MODE: Jog controls + Spindle + Overrides visible")
+        print("   - MDI MODE: MDI command input visible")
+        print("   - AUTO MODE: Program loader + execution controls visible")
+        print("\n*** MODE-BASED VISIBILITY ***")
+        print("✓ Manual: Jog buttons + Spindle/Override (right panel)")
+        print("✓ MDI: MDI controls only (right panel)")
+        print("✓ Auto: Program loader + controls (right panel)")
+        print("✓ Constant: DRO, Mode buttons, E-STOP, POWER, HOME (always visible)")
         print("="*50 + "\n")
     
     def setup_dro(self):
@@ -136,13 +165,21 @@ class HandlerClass:
             print(f"DRO note: {e}")
     
     def switch_to_manual(self):
-        """Switch to MANUAL mode"""
+        """Switch to MANUAL mode - Show jog controls + spindle/overrides in right panel"""
+        # Safety check - prevent mode switch during program execution
+        if self.is_auto_running():
+            print("ERROR: Cannot change mode - program is running!")
+            self.w.btn_mode_auto.setChecked(True)
+            return
+        
         self.current_mode = "MANUAL"
         print("\n*** MANUAL MODE ACTIVATED ***")
-        print("Use jog buttons and spindle controls")
+        print("VISIBLE: Jog buttons, Spindle controls, Jog velocity, Overrides")
+        print("HIDDEN: MDI controls, Auto controls")
         
-        # Hide MDI controls
-        self.w.groupBox_mdi.setVisible(False)
+        # Switch stacked widget to Manual page (index 0)
+        # This automatically shows all manual controls including jog buttons
+        self.w.stackedWidget_modes.setCurrentIndex(0)
         
         # Set LinuxCNC to manual mode
         try:
@@ -152,7 +189,13 @@ class HandlerClass:
             print(f"Mode switch error: {e}")
     
     def switch_to_mdi(self):
-        """Switch to MDI mode"""
+        """Switch to MDI mode - Show MDI controls only in right panel"""
+        # Safety check - prevent mode switch during program execution
+        if self.is_auto_running():
+            print("ERROR: Cannot change mode - program is running!")
+            self.w.btn_mode_auto.setChecked(True)
+            return
+        
         if not STATUS.machine_is_on():
             print("ERROR: Cannot switch to MDI - Power is OFF!")
             print("Click POWER ON first")
@@ -161,28 +204,244 @@ class HandlerClass:
         
         self.current_mode = "MDI"
         print("\n*** MDI MODE ACTIVATED ***")
-        print("Enter G-code and press EXECUTE or Enter")
+        print("VISIBLE: MDI command input, Execute, Clear, History")
+        print("HIDDEN: Jog controls, Spindle controls, Auto controls")
         
-        # Show MDI controls
-        self.w.groupBox_mdi.setVisible(True)
+        # Switch stacked widget to MDI page (index 1)
+        # This automatically hides manual controls and shows MDI controls
+        self.w.stackedWidget_modes.setCurrentIndex(1)
         
         # Set LinuxCNC to MDI mode
         try:
             self.command.mode(linuxcnc.MODE_MDI)
             self.command.wait_complete()
-            self.w.text_mdi_input.setFocus()
+            print("✓ MDI mode ready - Enter G-code commands")
         except Exception as e:
             print(f"Mode switch error: {e}")
+        
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("MDI commands may be rejected by LinuxCNC")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
+    
+    def switch_to_auto(self):
+        """Switch to AUTO mode - Show program loader + execution controls in right panel"""
+        # Safety check - prevent mode switch during program execution
+        if self.is_auto_running():
+            print("ERROR: Cannot change mode - already running!")
+            return
+        
+        if not STATUS.machine_is_on():
+            print("ERROR: Cannot switch to AUTO - Power is OFF!")
+            print("Click POWER ON first")
+            self.w.btn_mode_manual.setChecked(True)
+            return
+        
+        self.current_mode = "AUTO"
+        print("\n*** AUTO MODE ACTIVATED ***")
+        print("VISIBLE: Load Program, Program Preview, Cycle Start, Pause, Stop")
+        print("HIDDEN: Jog controls, Spindle controls, MDI controls")
+        
+        # Switch stacked widget to Auto page (index 2)
+        # This automatically hides manual and MDI controls
+        self.w.stackedWidget_modes.setCurrentIndex(2)
+        
+        # Set LinuxCNC to auto mode
+        try:
+            self.command.mode(linuxcnc.MODE_AUTO)
+            self.command.wait_complete()
+            print("✓ AUTO mode ready - Load a G-code program")
+        except Exception as e:
+            print(f"Mode switch error: {e}")
+        
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("Program execution may be rejected by LinuxCNC")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
+    
+    def is_auto_running(self):
+        """Check if auto mode is running"""
+        try:
+            self.stat.poll()
+            return (self.stat.task_mode == linuxcnc.MODE_AUTO and 
+                    self.stat.interp_state != linuxcnc.INTERP_IDLE)
+        except:
+            return False
+    
+    def load_program(self):
+        """Load a G-code program"""
+        if not STATUS.machine_is_on():
+            print("ERROR: Power OFF!")
+            return
+        
+        # Check if already running
+        if self.is_auto_running():
+            print("ERROR: Program is already running!")
+            return
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select G-code Program",
+            os.path.expanduser("~"),
+            "G-code Files (*.ngc *.nc *.gcode);;All Files (*)"
+        )
+        
+        if not file_path:
+            print("Load cancelled")
+            return
+        
+        print("\n" + "="*50)
+        print(f"LOADING PROGRAM: {os.path.basename(file_path)}")
+        print("="*50)
+        
+        try:
+            # Load program into LinuxCNC
+            self.command.mode(linuxcnc.MODE_AUTO)
+            self.command.wait_complete()
+            self.command.program_open(file_path)
+            
+            # Read program for preview
+            with open(file_path, 'r') as f:
+                self.loaded_program_lines = f.readlines()
+            
+            # Display in preview
+            preview_text = ''.join(self.loaded_program_lines)
+            self.w.text_program_preview.setPlainText(preview_text)
+            
+            # Update label
+            self.w.label_11.setText(f"Loaded: {os.path.basename(file_path)}")
+            
+            self.loaded_program_path = file_path
+            print(f"✓ Program loaded successfully")
+            print(f"✓ {len(self.loaded_program_lines)} lines")
+            print("✓ Click CYCLE START to begin execution")
+            print("="*50 + "\n")
+            
+        except Exception as e:
+            print(f"✗ Load error: {e}")
+            print("="*50 + "\n")
+    
+    def cycle_start(self):
+        """Start program execution"""
+        if not self.loaded_program_path:
+            print("ERROR: No program loaded!")
+            return
+        
+        if not STATUS.machine_is_on():
+            print("ERROR: Power OFF!")
+            return
+        
+        print("\n" + "="*50)
+        print("CYCLE START - Program execution beginning")
+        print("="*50)
+        
+        try:
+            self.command.mode(linuxcnc.MODE_AUTO)
+            self.command.wait_complete()
+            self.command.auto(linuxcnc.AUTO_RUN, 0)
+            print("✓ Program running")
+            print("Watch DRO for position changes")
+            print("="*50 + "\n")
+        except Exception as e:
+            print(f"✗ Cycle start error: {e}")
+            print("="*50 + "\n")
+    
+    def pause_program(self):
+        """Pause program execution"""
+        try:
+            self.command.auto(linuxcnc.AUTO_PAUSE)
+            print("Program PAUSED")
+        except Exception as e:
+            print(f"Pause error: {e}")
+    
+    def stop_program(self):
+        """Stop program execution"""
+        try:
+            self.command.abort()
+            print("Program STOPPED")
+        except Exception as e:
+            print(f"Stop error: {e}")
+    
+    def periodic_update(self):
+        """Periodic status updates"""
+        try:
+            self.stat.poll()
+            
+            # Update state label
+            state_text = {
+                linuxcnc.STATE_ESTOP: "E-STOP",
+                linuxcnc.STATE_ESTOP_RESET: "RESET",
+                linuxcnc.STATE_OFF: "OFF",
+                linuxcnc.STATE_ON: "READY"
+            }.get(self.stat.task_state, "UNKNOWN")
+            
+            self.w.label_state.setText(f"State: {state_text}")
+            
+            # Update line number in auto mode
+            if self.current_mode == "AUTO":
+                self.w.label_line.setText(f"Line: {self.stat.motion_line:03d}")
+                
+                # Highlight current line in program preview
+                current_line = self.stat.motion_line
+                if current_line != self.last_highlighted_line and current_line > 0:
+                    self.highlight_program_line(current_line)
+                    self.last_highlighted_line = current_line
+        except:
+            pass
+    
+    def highlight_program_line(self, line_num):
+        """Highlight current line in program preview"""
+        try:
+            cursor = self.w.text_program_preview.textCursor()
+            cursor.movePosition(QTextCursor.Start)
+            
+            # Move to target line
+            for _ in range(line_num - 1):
+                cursor.movePosition(QTextCursor.Down)
+            
+            # Select the line
+            cursor.select(QTextCursor.LineUnderCursor)
+            
+            # Apply highlight
+            fmt = QTextCharFormat()
+            fmt.setBackground(QColor("#ffff00"))
+            fmt.setForeground(QColor("#000000"))
+            cursor.setCharFormat(fmt)
+            
+            # Scroll to line
+            self.w.text_program_preview.setTextCursor(cursor)
+            self.w.text_program_preview.ensureCursorVisible()
+        except:
+            pass
     
     def execute_mdi(self):
         """Execute MDI command"""
         if self.current_mode != "MDI":
-            print("ERROR: Not in MDI mode!")
             return
         
         if not STATUS.machine_is_on():
-            print("ERROR: Machine power is OFF!")
+            print("ERROR: Power OFF!")
             return
+        
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("MDI commands may be rejected by LinuxCNC")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
         
         gcode_command = self.w.text_mdi_input.text().strip()
         
@@ -195,9 +454,36 @@ class HandlerClass:
         print("="*50)
         
         try:
+            # Ensure we're in MDI mode
             self.command.mode(linuxcnc.MODE_MDI)
-            self.command.wait_complete()
+            self.command.wait_complete(1.0)
+            
+            # Poll to confirm mode
+            self.stat.poll()
+            if self.stat.task_mode != linuxcnc.MODE_MDI:
+                print("✗ ERROR: Failed to enter MDI mode!")
+                print(f"Current mode: {self.stat.task_mode}")
+                print("="*50 + "\n")
+                return
+            
+            # Execute command
             self.command.mdi(gcode_command)
+            
+            # Wait for interpreter to start
+            time.sleep(0.1)
+            
+            # Check for immediate errors
+            self.stat.poll()
+            if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                error = self.command.error()
+                if error and error[0]:
+                    print(f"✗ LinuxCNC ERROR: {error}")
+                    print("Common causes:")
+                    print("  - Axes not homed")
+                    print("  - Command exceeds soft limits")
+                    print("  - Invalid G-code syntax")
+                    print("="*50 + "\n")
+                    return
             
             # Add to history
             current = self.w.text_mdi_history.toPlainText()
@@ -214,7 +500,6 @@ class HandlerClass:
             self.w.text_mdi_input.clear()
             
             print("✓ Command executed successfully")
-            print("Watch DRO for position changes")
             print("="*50 + "\n")
             
         except Exception as e:
@@ -290,6 +575,7 @@ class HandlerClass:
                 self.command.home(joint_num)
             
             print("✓ Homing complete - DRO shows 0.000")
+            print("All axes (X, Y, Z) are now homed")
         except Exception as e:
             print(f"Homing error: {e}")
         print("="*25 + "\n")
@@ -302,10 +588,13 @@ class HandlerClass:
         if not STATUS.machine_is_on() or not STATUS.estop_is_clear():
             return
         
+        # Convert mm/min to mm/sec for LinuxCNC
+        speed_per_sec = self.jog_speed / 60.0
+        
         if self.jog_mode == "continuous":
-            ACTION.JOG(joint_num, direction, self.jog_speed)
+            ACTION.JOG(joint_num, direction, speed_per_sec)
         else:
-            ACTION.JOG(joint_num, direction, self.jog_speed, self.jog_increment)
+            ACTION.JOG(joint_num, direction, speed_per_sec, self.jog_increment)
     
     def jog_stop(self, joint_num):
         """Stop jogging"""
