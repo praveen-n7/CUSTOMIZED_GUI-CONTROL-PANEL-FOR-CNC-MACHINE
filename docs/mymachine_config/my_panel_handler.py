@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 QtVCP Panel Handler - Mode-Based Visibility Control
-Version: 6.0 - REORGANIZED LAYOUT WITH STRICT MODE VISIBILITY
+Version: 6.1 - ADDED INDIVIDUAL AXIS HOMING + DRO OVERLAY
 """
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QButtonGroup, QFileDialog
-from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor
+from PyQt5.QtCore import Qt, QTimer, QObject, QEvent
+from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut
+from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor, QKeySequence
 from qtvcp.core import Status, Action, Info
 import linuxcnc
 import os
@@ -15,6 +15,31 @@ import time
 STATUS = Status()
 ACTION = Action()
 INFO = Info()
+
+# — ADDED: KEY RELEASE STOP MIRROR —
+class KeyReleaseFilter(QObject):
+    """Minimal event filter to handle arrow key release for jog stop"""
+    def __init__(self, handler):
+        super().__init__()
+        self.handler = handler
+    
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyRelease and not event.isAutoRepeat():
+            key = event.key()
+            if key == Qt.Key_Right:
+                self.handler.w.btn_jog_xplus.released.emit()
+                return True
+            elif key == Qt.Key_Left:
+                self.handler.w.btn_jog_xminus.released.emit()
+                return True
+            elif key == Qt.Key_Up:
+                self.handler.w.btn_jog_yplus.released.emit()
+                return True
+            elif key == Qt.Key_Down:
+                self.handler.w.btn_jog_yminus.released.emit()
+                return True
+        return False
+# — END ADDED: KEY RELEASE STOP MIRROR —
 
 class HandlerClass:
     def __init__(self, halcomp, widgets, paths):
@@ -44,7 +69,7 @@ class HandlerClass:
         """Called after widgets are initialized"""
         print("="*50)
         print("QtVCP Panel - Mode-Based Visibility Control")
-        print("Version 6.0 - REORGANIZED LAYOUT")
+        print("Version 6.1 - INDIVIDUAL AXIS HOMING + DRO OVERLAY")
         print("="*50)
         
         # Configure DRO
@@ -75,6 +100,13 @@ class HandlerClass:
         self.w.btn_estop.clicked.connect(self.toggle_estop)
         self.w.btn_power.clicked.connect(self.toggle_power)
         self.w.btn_home_all.clicked.connect(self.home_all)
+        
+        # — ADDED FOR AXIS HOMING BUTTONS —
+        # Connect individual axis homing buttons
+        self.w.btn_home_x.clicked.connect(self.home_x_axis)
+        self.w.btn_home_y.clicked.connect(self.home_y_axis)
+        self.w.btn_home_z.clicked.connect(self.home_z_axis)
+        # — END ADDED FOR AXIS HOMING BUTTONS —
         
         # Connect MDI controls
         self.w.btn_mdi_execute.clicked.connect(self.execute_mdi)
@@ -136,10 +168,37 @@ class HandlerClass:
         self.timer.timeout.connect(self.periodic_update)
         self.timer.start(100)  # 100ms update rate
         
+        # — ADDED: ARROW KEY TO JOG BUTTON MIRROR —
+        # Create keyboard shortcuts that trigger existing jog button signals
+        # Right Arrow → X+ button
+        self.shortcut_x_plus = QShortcut(QKeySequence(Qt.Key_Right), self.w)
+        self.shortcut_x_plus.activated.connect(lambda: self.w.btn_jog_xplus.pressed.emit())
+        self.shortcut_x_plus.setAutoRepeat(False)
+        
+        # Left Arrow → X- button
+        self.shortcut_x_minus = QShortcut(QKeySequence(Qt.Key_Left), self.w)
+        self.shortcut_x_minus.activated.connect(lambda: self.w.btn_jog_xminus.pressed.emit())
+        self.shortcut_x_minus.setAutoRepeat(False)
+        
+        # Up Arrow → Y+ button
+        self.shortcut_y_plus = QShortcut(QKeySequence(Qt.Key_Up), self.w)
+        self.shortcut_y_plus.activated.connect(lambda: self.w.btn_jog_yplus.pressed.emit())
+        self.shortcut_y_plus.setAutoRepeat(False)
+        
+        # Down Arrow → Y- button
+        self.shortcut_y_minus = QShortcut(QKeySequence(Qt.Key_Down), self.w)
+        self.shortcut_y_minus.activated.connect(lambda: self.w.btn_jog_yminus.pressed.emit())
+        self.shortcut_y_minus.setAutoRepeat(False)
+        
+        # Install key release filter for jog stop
+        self.key_release_filter = KeyReleaseFilter(self)
+        self.w.installEventFilter(self.key_release_filter)
+        # — END ADDED: ARROW KEY TO JOG BUTTON MIRROR —
+        
         print("\n*** STARTUP SEQUENCE ***")
         print("1. Click E-STOP to clear")
         print("2. Click POWER ON")
-        print("3. Click HOME ALL")
+        print("3. Click HOME ALL (or HOME X, HOME Y, HOME Z individually)")
         print("4. Select mode:")
         print("   - MANUAL MODE: Jog controls + Spindle + Overrides visible")
         print("   - MDI MODE: MDI command input visible")
@@ -148,19 +207,38 @@ class HandlerClass:
         print("✓ Manual: Jog buttons + Spindle/Override (right panel)")
         print("✓ MDI: MDI controls only (right panel)")
         print("✓ Auto: Program loader + controls (right panel)")
-        print("✓ Constant: DRO, Mode buttons, E-STOP, POWER, HOME (always visible)")
+        print("✓ Constant: DRO (overlaid on graphics), Mode buttons, E-STOP, POWER, HOME (always visible)")
+        print("\n*** KEYBOARD JOG SHORTCUTS ***")
+        print("✓ Arrow Keys in MANUAL mode:")
+        print("  → (Right) = X+  |  ← (Left) = X-")
+        print("  ↑ (Up) = Y+     |  ↓ (Down) = Y-")
         print("="*50 + "\n")
     
     def setup_dro(self):
-        """Configure DRO displays"""
+        """Configure DRO displays with axis labels"""
         try:
-            for dro, joint in [(self.w.dro_x, 0), (self.w.dro_y, 1), (self.w.dro_z, 2)]:
-                dro.setProperty('joint_number', joint)
-                dro.setProperty('Qjoint_number', joint)
-                dro.setProperty('reference_type', 0)
-                dro.setProperty('metric_units', True)
-                dro.setProperty('mm_text_template', '%10.3f')
-            print("✓ DRO configured (X, Y, Z)")
+            # X axis
+            self.w.dro_x.setProperty('joint_number', 0)
+            self.w.dro_x.setProperty('Qjoint_number', 0)
+            self.w.dro_x.setProperty('reference_type', 0)
+            self.w.dro_x.setProperty('metric_units', True)
+            self.w.dro_x.setProperty('mm_text_template', 'X: %10.3f')
+            
+            # Y axis
+            self.w.dro_y.setProperty('joint_number', 1)
+            self.w.dro_y.setProperty('Qjoint_number', 1)
+            self.w.dro_y.setProperty('reference_type', 0)
+            self.w.dro_y.setProperty('metric_units', True)
+            self.w.dro_y.setProperty('mm_text_template', 'Y: %10.3f')
+            
+            # Z axis
+            self.w.dro_z.setProperty('joint_number', 2)
+            self.w.dro_z.setProperty('Qjoint_number', 2)
+            self.w.dro_z.setProperty('reference_type', 0)
+            self.w.dro_z.setProperty('metric_units', True)
+            self.w.dro_z.setProperty('mm_text_template', 'Z: %10.3f')
+            
+            print("✓ DRO configured (X, Y, Z) - compact overlay at top-left with axis labels")
         except Exception as e:
             print(f"DRO note: {e}")
     
@@ -204,36 +282,28 @@ class HandlerClass:
         
         self.current_mode = "MDI"
         print("\n*** MDI MODE ACTIVATED ***")
-        print("VISIBLE: MDI command input, Execute, Clear, History")
+        print("VISIBLE: MDI command input, Execute/Clear buttons, Command history")
         print("HIDDEN: Jog controls, Spindle controls, Auto controls")
         
         # Switch stacked widget to MDI page (index 1)
-        # This automatically hides manual controls and shows MDI controls
         self.w.stackedWidget_modes.setCurrentIndex(1)
         
         # Set LinuxCNC to MDI mode
         try:
             self.command.mode(linuxcnc.MODE_MDI)
             self.command.wait_complete()
-            print("✓ MDI mode ready - Enter G-code commands")
         except Exception as e:
             print(f"Mode switch error: {e}")
         
-        # Check if homed
-        self.stat.poll()
-        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
-        if not all_homed:
-            print("\n" + "="*50)
-            print("⚠ WARNING: NOT ALL AXES HOMED!")
-            print("MDI commands may be rejected by LinuxCNC")
-            print("Recommendation: Click HOME ALL first")
-            print("="*50 + "\n")
+        # Focus on MDI input field
+        self.w.text_mdi_input.setFocus()
     
     def switch_to_auto(self):
         """Switch to AUTO mode - Show program loader + execution controls in right panel"""
         # Safety check - prevent mode switch during program execution
         if self.is_auto_running():
-            print("ERROR: Cannot change mode - already running!")
+            print("ERROR: Cannot change mode - program is already running!")
+            self.w.btn_mode_auto.setChecked(True)
             return
         
         if not STATUS.machine_is_on():
@@ -244,33 +314,28 @@ class HandlerClass:
         
         self.current_mode = "AUTO"
         print("\n*** AUTO MODE ACTIVATED ***")
-        print("VISIBLE: Load Program, Program Preview, Cycle Start, Pause, Stop")
+        print("VISIBLE: Load Program, Program Preview, Cycle Start/Pause/Stop")
         print("HIDDEN: Jog controls, Spindle controls, MDI controls")
         
         # Switch stacked widget to Auto page (index 2)
-        # This automatically hides manual and MDI controls
         self.w.stackedWidget_modes.setCurrentIndex(2)
         
         # Set LinuxCNC to auto mode
         try:
             self.command.mode(linuxcnc.MODE_AUTO)
             self.command.wait_complete()
-            print("✓ AUTO mode ready - Load a G-code program")
         except Exception as e:
             print(f"Mode switch error: {e}")
-        
-        # Check if homed
-        self.stat.poll()
-        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
-        if not all_homed:
-            print("\n" + "="*50)
-            print("⚠ WARNING: NOT ALL AXES HOMED!")
-            print("Program execution may be rejected by LinuxCNC")
-            print("Recommendation: Click HOME ALL first")
-            print("="*50 + "\n")
+    
+    def periodic_update(self):
+        """Periodic status update"""
+        try:
+            self.stat.poll()
+        except:
+            pass
     
     def is_auto_running(self):
-        """Check if auto mode is running"""
+        """Check if auto mode program is running"""
         try:
             self.stat.poll()
             return (self.stat.task_mode == linuxcnc.MODE_AUTO and 
@@ -279,57 +344,55 @@ class HandlerClass:
             return False
     
     def load_program(self):
-        """Load a G-code program"""
+        """Load G-code program"""
         if not STATUS.machine_is_on():
             print("ERROR: Power OFF!")
             return
         
-        # Check if already running
-        if self.is_auto_running():
-            print("ERROR: Program is already running!")
-            return
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("Running programs without homing may cause issues")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
         
+        options = QFileDialog.Options()
         file_path, _ = QFileDialog.getOpenFileName(
             None,
             "Select G-code Program",
             os.path.expanduser("~"),
-            "G-code Files (*.ngc *.nc *.gcode);;All Files (*)"
+            "G-code Files (*.ngc *.nc *.gcode);;All Files (*)",
+            options=options
         )
         
-        if not file_path:
-            print("Load cancelled")
-            return
-        
-        print("\n" + "="*50)
-        print(f"LOADING PROGRAM: {os.path.basename(file_path)}")
-        print("="*50)
-        
-        try:
-            # Load program into LinuxCNC
-            self.command.mode(linuxcnc.MODE_AUTO)
-            self.command.wait_complete()
-            self.command.program_open(file_path)
-            
-            # Read program for preview
-            with open(file_path, 'r') as f:
-                self.loaded_program_lines = f.readlines()
-            
-            # Display in preview
-            preview_text = ''.join(self.loaded_program_lines)
-            self.w.text_program_preview.setPlainText(preview_text)
-            
-            # Update label
-            self.w.label_11.setText(f"Loaded: {os.path.basename(file_path)}")
-            
-            self.loaded_program_path = file_path
-            print(f"✓ Program loaded successfully")
-            print(f"✓ {len(self.loaded_program_lines)} lines")
-            print("✓ Click CYCLE START to begin execution")
-            print("="*50 + "\n")
-            
-        except Exception as e:
-            print(f"✗ Load error: {e}")
-            print("="*50 + "\n")
+        if file_path:
+            try:
+                # Load the program
+                self.command.mode(linuxcnc.MODE_AUTO)
+                self.command.wait_complete()
+                ACTION.OPEN_PROGRAM(file_path)
+                
+                # Read and display preview
+                with open(file_path, 'r') as f:
+                    lines = f.readlines()
+                    self.loaded_program_lines = lines
+                    preview_text = ''.join(lines[:50])  # Show first 50 lines
+                    if len(lines) > 50:
+                        preview_text += f"\n... ({len(lines)} total lines)"
+                    self.w.text_program_preview.setPlainText(preview_text)
+                
+                self.loaded_program_path = file_path
+                self.w.label_11.setText(f"Loaded: {os.path.basename(file_path)}")
+                print(f"\n✓ Program loaded: {file_path}")
+                print(f"  Total lines: {len(lines)}")
+                print(f"  Ready to run - Click CYCLE START")
+                print("="*50 + "\n")
+                
+            except Exception as e:
+                print(f"ERROR loading program: {e}")
     
     def cycle_start(self):
         """Start program execution"""
@@ -341,20 +404,29 @@ class HandlerClass:
             print("ERROR: Power OFF!")
             return
         
-        print("\n" + "="*50)
-        print("CYCLE START - Program execution beginning")
-        print("="*50)
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("Program execution may fail")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
         
         try:
+            print("\n*** CYCLE START ***")
+            print(f"Running: {os.path.basename(self.loaded_program_path)}")
+            print("="*50)
+            
             self.command.mode(linuxcnc.MODE_AUTO)
             self.command.wait_complete()
             self.command.auto(linuxcnc.AUTO_RUN, 0)
-            print("✓ Program running")
-            print("Watch DRO for position changes")
-            print("="*50 + "\n")
+            
+            print("✓ Program started")
+            
         except Exception as e:
-            print(f"✗ Cycle start error: {e}")
-            print("="*50 + "\n")
+            print(f"ERROR: {e}")
     
     def pause_program(self):
         """Pause program execution"""
@@ -372,65 +444,11 @@ class HandlerClass:
         except Exception as e:
             print(f"Stop error: {e}")
     
-    def periodic_update(self):
-        """Periodic status updates"""
-        try:
-            self.stat.poll()
-            
-            # Update state label
-            state_text = {
-                linuxcnc.STATE_ESTOP: "E-STOP",
-                linuxcnc.STATE_ESTOP_RESET: "RESET",
-                linuxcnc.STATE_OFF: "OFF",
-                linuxcnc.STATE_ON: "READY"
-            }.get(self.stat.task_state, "UNKNOWN")
-            
-            self.w.label_state.setText(f"State: {state_text}")
-            
-            # Update line number in auto mode
-            if self.current_mode == "AUTO":
-                self.w.label_line.setText(f"Line: {self.stat.motion_line:03d}")
-                
-                # Highlight current line in program preview
-                current_line = self.stat.motion_line
-                if current_line != self.last_highlighted_line and current_line > 0:
-                    self.highlight_program_line(current_line)
-                    self.last_highlighted_line = current_line
-        except:
-            pass
-    
-    def highlight_program_line(self, line_num):
-        """Highlight current line in program preview"""
-        try:
-            cursor = self.w.text_program_preview.textCursor()
-            cursor.movePosition(QTextCursor.Start)
-            
-            # Move to target line
-            for _ in range(line_num - 1):
-                cursor.movePosition(QTextCursor.Down)
-            
-            # Select the line
-            cursor.select(QTextCursor.LineUnderCursor)
-            
-            # Apply highlight
-            fmt = QTextCharFormat()
-            fmt.setBackground(QColor("#ffff00"))
-            fmt.setForeground(QColor("#000000"))
-            cursor.setCharFormat(fmt)
-            
-            # Scroll to line
-            self.w.text_program_preview.setTextCursor(cursor)
-            self.w.text_program_preview.ensureCursorVisible()
-        except:
-            pass
-    
     def execute_mdi(self):
         """Execute MDI command"""
-        if self.current_mode != "MDI":
-            return
-        
         if not STATUS.machine_is_on():
-            print("ERROR: Power OFF!")
+            print("ERROR: Power is OFF!")
+            print("Click POWER ON first")
             return
         
         # Check if homed
@@ -579,6 +597,92 @@ class HandlerClass:
         except Exception as e:
             print(f"Homing error: {e}")
         print("="*25 + "\n")
+    
+    # — ADDED FOR AXIS HOMING BUTTONS —
+    def home_x_axis(self):
+        """Home X axis (Joint 0)"""
+        if not STATUS.estop_is_clear():
+            print("ERROR: Clear E-stop first!")
+            return
+        if not STATUS.machine_is_on():
+            print("ERROR: Power OFF!")
+            return
+        
+        print("\n*** HOMING X AXIS ***")
+        try:
+            self.stat.poll()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self.command.wait_complete()
+            
+            # Unhome if already homed
+            if self.stat.homed[0] == 1:
+                self.command.unhome(0)
+                self.command.wait_complete()
+            
+            # Home joint 0 (X axis)
+            self.command.home(0)
+            
+            print("✓ X axis homing initiated")
+        except Exception as e:
+            print(f"X axis homing error: {e}")
+        print("="*25 + "\n")
+    
+    def home_y_axis(self):
+        """Home Y axis (Joint 1)"""
+        if not STATUS.estop_is_clear():
+            print("ERROR: Clear E-stop first!")
+            return
+        if not STATUS.machine_is_on():
+            print("ERROR: Power OFF!")
+            return
+        
+        print("\n*** HOMING Y AXIS ***")
+        try:
+            self.stat.poll()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self.command.wait_complete()
+            
+            # Unhome if already homed
+            if self.stat.homed[1] == 1:
+                self.command.unhome(1)
+                self.command.wait_complete()
+            
+            # Home joint 1 (Y axis)
+            self.command.home(1)
+            
+            print("✓ Y axis homing initiated")
+        except Exception as e:
+            print(f"Y axis homing error: {e}")
+        print("="*25 + "\n")
+    
+    def home_z_axis(self):
+        """Home Z axis (Joint 2)"""
+        if not STATUS.estop_is_clear():
+            print("ERROR: Clear E-stop first!")
+            return
+        if not STATUS.machine_is_on():
+            print("ERROR: Power OFF!")
+            return
+        
+        print("\n*** HOMING Z AXIS ***")
+        try:
+            self.stat.poll()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self.command.wait_complete()
+            
+            # Unhome if already homed
+            if self.stat.homed[2] == 1:
+                self.command.unhome(2)
+                self.command.wait_complete()
+            
+            # Home joint 2 (Z axis)
+            self.command.home(2)
+            
+            print("✓ Z axis homing initiated")
+        except Exception as e:
+            print(f"Z axis homing error: {e}")
+        print("="*25 + "\n")
+    # — END ADDED FOR AXIS HOMING BUTTONS —
     
     def jog_joint(self, joint_num, direction):
         """Start jogging"""
