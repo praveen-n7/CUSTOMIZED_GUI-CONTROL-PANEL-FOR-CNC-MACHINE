@@ -5,7 +5,7 @@ Version: 6.1 - ADDED INDIVIDUAL AXIS HOMING + DRO OVERLAY
 """
 
 from PyQt5.QtCore import Qt, QTimer, QObject, QEvent
-from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut
+from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton
 from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor, QKeySequence
 from qtvcp.core import Status, Action, Info
 import linuxcnc
@@ -41,6 +41,194 @@ class KeyReleaseFilter(QObject):
         return False
 # — END ADDED: KEY RELEASE STOP MIRROR —
 
+# — ADDED: JOINT ASSIGNMENT DIALOG —
+class JointAssignmentDialog(QDialog):
+    """Modal dialog for assigning joints to home buttons"""
+    def __init__(self, parent, current_mappings, joint_count):
+        super().__init__(parent)
+        self.setWindowTitle("Joint Assignment")
+        self.setModal(True)
+        self.setMinimumWidth(350)
+        
+        # Store parameters
+        self.current_mappings = current_mappings.copy()
+        self.joint_count = joint_count
+        self.result_mappings = None
+        
+        # Create combo boxes
+        self.combo_x = QComboBox()
+        self.combo_y = QComboBox()
+        self.combo_z = QComboBox()
+        
+        # Populate combos with joint options
+        for i in range(joint_count):
+            self.combo_x.addItem(f"Joint {i}", i)
+            self.combo_y.addItem(f"Joint {i}", i)
+            self.combo_z.addItem(f"Joint {i}", i)
+        
+        # Set current selections
+        self.combo_x.setCurrentIndex(current_mappings['x'])
+        self.combo_y.setCurrentIndex(current_mappings['y'])
+        self.combo_z.setCurrentIndex(current_mappings['z'])
+        
+        # Layout
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Title label
+        title_label = QLabel("Assign Joints to Home Buttons")
+        title_label.setStyleSheet("font-size: 12pt; font-weight: bold; color: #2c3e50;")
+        layout.addWidget(title_label)
+        
+        # HOME X row
+        x_layout = QHBoxLayout()
+        x_label = QLabel("HOME X:")
+        x_label.setMinimumWidth(80)
+        x_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        x_layout.addWidget(x_label)
+        self.combo_x.setStyleSheet(self.get_combo_style())
+        x_layout.addWidget(self.combo_x)
+        layout.addLayout(x_layout)
+        
+        # HOME Y row
+        y_layout = QHBoxLayout()
+        y_label = QLabel("HOME Y:")
+        y_label.setMinimumWidth(80)
+        y_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        y_layout.addWidget(y_label)
+        self.combo_y.setStyleSheet(self.get_combo_style())
+        y_layout.addWidget(self.combo_y)
+        layout.addLayout(y_layout)
+        
+        # HOME Z row
+        z_layout = QHBoxLayout()
+        z_label = QLabel("HOME Z:")
+        z_label.setMinimumWidth(80)
+        z_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        z_layout.addWidget(z_label)
+        self.combo_z.setStyleSheet(self.get_combo_style())
+        z_layout.addWidget(self.combo_z)
+        layout.addLayout(z_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+        
+        self.btn_confirm = QPushButton("CONFIRM")
+        self.btn_confirm.setMinimumHeight(40)
+        self.btn_confirm.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: 2px solid #1e8449;
+                font-weight: bold;
+                border-radius: 4px;
+                font-size: 11pt;
+            }
+            QPushButton:hover {
+                border-color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #1e8449;
+            }
+        """)
+        self.btn_confirm.clicked.connect(self.accept_changes)
+        
+        self.btn_cancel = QPushButton("CANCEL")
+        self.btn_cancel.setMinimumHeight(40)
+        self.btn_cancel.setStyleSheet("""
+            QPushButton {
+                background-color: #c0392b;
+                color: white;
+                border: 2px solid #943126;
+                font-weight: bold;
+                border-radius: 4px;
+                font-size: 11pt;
+            }
+            QPushButton:hover {
+                border-color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #943126;
+            }
+        """)
+        self.btn_cancel.clicked.connect(self.reject)
+        
+        button_layout.addWidget(self.btn_confirm)
+        button_layout.addWidget(self.btn_cancel)
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+        
+        # Apply dialog styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #ecf0f1;
+            }
+        """)
+    
+    def get_combo_style(self):
+        """Return consistent combo box styling"""
+        return """
+            QComboBox {
+                background-color: white;
+                border: 2px solid #bdc3c7;
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 10pt;
+                min-height: 30px;
+            }
+            QComboBox:hover {
+                border-color: #3498db;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #2c3e50;
+                margin-right: 5px;
+            }
+        """
+    
+    def accept_changes(self):
+        """User confirmed - validate and store new mappings"""
+        # — ADDED: UNIQUE JOINT VALIDATION —
+        # Get selected joints
+        selected_x = self.combo_x.currentData()
+        selected_y = self.combo_y.currentData()
+        selected_z = self.combo_z.currentData()
+        
+        # Check for duplicate joint assignments
+        selected_joints = [selected_x, selected_y, selected_z]
+        if len(selected_joints) != len(set(selected_joints)):
+            # Duplicates detected - show error
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Invalid Joint Assignment",
+                "Each Home button must be assigned to a unique joint.",
+                QMessageBox.Ok
+            )
+            return  # Do not close dialog or update mappings
+        # — END ADDED: UNIQUE JOINT VALIDATION —
+        
+        # All selections are unique - proceed
+        self.result_mappings = {
+            'x': selected_x,
+            'y': selected_y,
+            'z': selected_z
+        }
+        self.accept()
+    
+    def get_mappings(self):
+        """Return the selected mappings (None if cancelled)"""
+        return self.result_mappings
+# — END ADDED: JOINT ASSIGNMENT DIALOG —
+
 class HandlerClass:
     def __init__(self, halcomp, widgets, paths):
         self.hal = halcomp
@@ -64,6 +252,13 @@ class HandlerClass:
         self.loaded_program_lines = []
         self.auto_feedrate_override = 100
         self.last_highlighted_line = -1
+        
+        # — ADDED: DYNAMIC HOME BUTTON BINDING —
+        # Default joint to axis mapping
+        self.home_x_joint = 0
+        self.home_y_joint = 1
+        self.home_z_joint = 2
+        # — END ADDED: DYNAMIC HOME BUTTON BINDING —
         
     def initialized__(self):
         """Called after widgets are initialized"""
@@ -100,6 +295,11 @@ class HandlerClass:
         self.w.btn_estop.clicked.connect(self.toggle_estop)
         self.w.btn_power.clicked.connect(self.toggle_power)
         self.w.btn_home_all.clicked.connect(self.home_all)
+        
+        # — ADDED: JOINT SELECT BUTTON —
+        # Connect joint assignment dialog button
+        self.w.btn_joint_select.clicked.connect(self.open_joint_assignment_dialog)
+        # — END ADDED: JOINT SELECT BUTTON —
         
         # — ADDED FOR AXIS HOMING BUTTONS —
         # Connect individual axis homing buttons
@@ -600,7 +800,7 @@ class HandlerClass:
     
     # — ADDED FOR AXIS HOMING BUTTONS —
     def home_x_axis(self):
-        """Home X axis (Joint 0)"""
+        """Home X axis using dynamically assigned joint"""
         if not STATUS.estop_is_clear():
             print("ERROR: Clear E-stop first!")
             return
@@ -608,19 +808,19 @@ class HandlerClass:
             print("ERROR: Power OFF!")
             return
         
-        print("\n*** HOMING X AXIS ***")
+        print(f"\n*** HOMING X AXIS (Joint {self.home_x_joint}) ***")
         try:
             self.stat.poll()
             self.command.mode(linuxcnc.MODE_MANUAL)
             self.command.wait_complete()
             
             # Unhome if already homed
-            if self.stat.homed[0] == 1:
-                self.command.unhome(0)
+            if self.stat.homed[self.home_x_joint] == 1:
+                self.command.unhome(self.home_x_joint)
                 self.command.wait_complete()
             
-            # Home joint 0 (X axis)
-            self.command.home(0)
+            # Home assigned joint
+            self.command.home(self.home_x_joint)
             
             print("✓ X axis homing initiated")
         except Exception as e:
@@ -628,7 +828,7 @@ class HandlerClass:
         print("="*25 + "\n")
     
     def home_y_axis(self):
-        """Home Y axis (Joint 1)"""
+        """Home Y axis using dynamically assigned joint"""
         if not STATUS.estop_is_clear():
             print("ERROR: Clear E-stop first!")
             return
@@ -636,19 +836,19 @@ class HandlerClass:
             print("ERROR: Power OFF!")
             return
         
-        print("\n*** HOMING Y AXIS ***")
+        print(f"\n*** HOMING Y AXIS (Joint {self.home_y_joint}) ***")
         try:
             self.stat.poll()
             self.command.mode(linuxcnc.MODE_MANUAL)
             self.command.wait_complete()
             
             # Unhome if already homed
-            if self.stat.homed[1] == 1:
-                self.command.unhome(1)
+            if self.stat.homed[self.home_y_joint] == 1:
+                self.command.unhome(self.home_y_joint)
                 self.command.wait_complete()
             
-            # Home joint 1 (Y axis)
-            self.command.home(1)
+            # Home assigned joint
+            self.command.home(self.home_y_joint)
             
             print("✓ Y axis homing initiated")
         except Exception as e:
@@ -656,7 +856,7 @@ class HandlerClass:
         print("="*25 + "\n")
     
     def home_z_axis(self):
-        """Home Z axis (Joint 2)"""
+        """Home Z axis using dynamically assigned joint"""
         if not STATUS.estop_is_clear():
             print("ERROR: Clear E-stop first!")
             return
@@ -664,25 +864,59 @@ class HandlerClass:
             print("ERROR: Power OFF!")
             return
         
-        print("\n*** HOMING Z AXIS ***")
+        print(f"\n*** HOMING Z AXIS (Joint {self.home_z_joint}) ***")
         try:
             self.stat.poll()
             self.command.mode(linuxcnc.MODE_MANUAL)
             self.command.wait_complete()
             
             # Unhome if already homed
-            if self.stat.homed[2] == 1:
-                self.command.unhome(2)
+            if self.stat.homed[self.home_z_joint] == 1:
+                self.command.unhome(self.home_z_joint)
                 self.command.wait_complete()
             
-            # Home joint 2 (Z axis)
-            self.command.home(2)
+            # Home assigned joint
+            self.command.home(self.home_z_joint)
             
             print("✓ Z axis homing initiated")
         except Exception as e:
             print(f"Z axis homing error: {e}")
         print("="*25 + "\n")
     # — END ADDED FOR AXIS HOMING BUTTONS —
+    
+    # — ADDED: DYNAMIC HOME BUTTON BINDING —
+    def open_joint_assignment_dialog(self):
+        """Open dialog to reassign joints to home buttons"""
+        # Get current mappings
+        current_mappings = {
+            'x': self.home_x_joint,
+            'y': self.home_y_joint,
+            'z': self.home_z_joint
+        }
+        
+        # Get joint count from INFO
+        joint_count = INFO.JOINT_COUNT
+        
+        # Create and show dialog
+        dialog = JointAssignmentDialog(self.w, current_mappings, joint_count)
+        
+        # Execute dialog and get result
+        if dialog.exec_():
+            # User confirmed - apply new mappings
+            new_mappings = dialog.get_mappings()
+            if new_mappings:
+                self.home_x_joint = new_mappings['x']
+                self.home_y_joint = new_mappings['y']
+                self.home_z_joint = new_mappings['z']
+                
+                print("\n*** JOINT ASSIGNMENT UPDATED ***")
+                print(f"HOME X → Joint {self.home_x_joint}")
+                print(f"HOME Y → Joint {self.home_y_joint}")
+                print(f"HOME Z → Joint {self.home_z_joint}")
+                print("="*35 + "\n")
+        else:
+            print("Joint assignment cancelled")
+    # — END ADDED: DYNAMIC HOME BUTTON BINDING —
     
     def jog_joint(self, joint_num, direction):
         """Start jogging"""

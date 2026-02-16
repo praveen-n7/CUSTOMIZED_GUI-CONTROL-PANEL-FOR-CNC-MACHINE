@@ -174,6 +174,156 @@ QPushButton:pressed {
      <string>HOME ALL</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="btn_home_x">
+    <property name="geometry">
+     <rect>
+      <x>280</x>
+      <y>70</y>
+      <width>90</width>
+      <height>36</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+    </property>
+    <property name="text">
+     <string>HOME X</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_home_y">
+    <property name="geometry">
+     <rect>
+      <x>280</x>
+      <y>130</y>
+      <width>90</width>
+      <height>36</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+    </property>
+    <property name="text">
+     <string>HOME Y</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_home_z">
+    <property name="geometry">
+     <rect>
+      <x>280</x>
+      <y>190</y>
+      <width>90</width>
+      <height>36</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+    </property>
+    <property name="text">
+     <string>HOME Z</string>
+    </property>
+   </widget>
+   <!-- — ADDED: JOINT SELECT BUTTON — -->
+   <widget class="QPushButton" name="btn_joint_select">
+    <property name="geometry">
+     <rect>
+      <x>140</x>
+      <y>56</y>
+      <width>111</width>
+      <height>36</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+    background-color: #f39c12;
+    color: white;
+    border: 2px solid #d68910;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #d68910;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+    </property>
+    <property name="text">
+     <string>JOINT SELECT</string>
+    </property>
+   </widget>
+   <!-- — END ADDED: JOINT SELECT BUTTON — -->
    <widget class="QPushButton" name="btn_mode_manual">
     <property name="geometry">
      <rect>
@@ -324,209 +474,7 @@ QPushButton:pressed {
      <bool>true</bool>
     </property>
    </widget>
-   <widget class="QGroupBox" name="groupBox_dro">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>60</y>
-      <width>370</width>
-      <height>160</height>
-     </rect>
-    </property>
-    <property name="title">
-     <string>DRO</string>
-    </property>
-    <widget class="QLabel" name="label">
-     <property name="geometry">
-      <rect>
-       <x>55</x>
-       <y>30</y>
-       <width>40</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>10</pointsize>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="text">
-      <string>X:</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="DROLabel" name="dro_x">
-     <property name="geometry">
-      <rect>
-       <x>110</x>
-       <y>27</y>
-       <width>240</width>
-       <height>35</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <family>Monospace</family>
-       <pointsize>14</pointsize>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">background-color: #000000; color: #00ff00; padding: 5px;</string>
-     </property>
-     <property name="text">
-      <string>0.000</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="QLabel" name="label_2">
-     <property name="geometry">
-      <rect>
-       <x>55</x>
-       <y>70</y>
-       <width>40</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>10</pointsize>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="text">
-      <string>Y:</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="DROLabel" name="dro_y">
-     <property name="geometry">
-      <rect>
-       <x>110</x>
-       <y>67</y>
-       <width>240</width>
-       <height>35</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <family>Monospace</family>
-       <pointsize>14</pointsize>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">background-color: #000000; color: #00ff00; padding: 5px;</string>
-     </property>
-     <property name="text">
-      <string>0.000</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="QLabel" name="label_3">
-     <property name="geometry">
-      <rect>
-       <x>55</x>
-       <y>110</y>
-       <width>40</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>10</pointsize>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="text">
-      <string>Z:</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="DROLabel" name="dro_z">
-     <property name="geometry">
-      <rect>
-       <x>110</x>
-       <y>107</y>
-       <width>240</width>
-       <height>35</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <family>Monospace</family>
-       <pointsize>14</pointsize>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">background-color: #000000; color: #00ff00; padding: 5px;</string>
-     </property>
-     <property name="text">
-      <string>0.000</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="QLabel" name="label_6">
-     <property name="geometry">
-      <rect>
-       <x>110</x>
-       <y>28</y>
-       <width>30</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>mm</string>
-     </property>
-    </widget>
-    <widget class="QLabel" name="label_7">
-     <property name="geometry">
-      <rect>
-       <x>110</x>
-       <y>68</y>
-       <width>30</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>mm</string>
-     </property>
-    </widget>
-    <widget class="QLabel" name="label_8">
-     <property name="geometry">
-      <rect>
-       <x>110</x>
-       <y>108</y>
-       <width>30</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>mm</string>
-     </property>
-    </widget>
-   </widget>
-   <widget class="GCodeGraphics" name="gcode_viewer">
+   <widget class="QWidget" name="gcode_viewer_container" native="true">
     <property name="geometry">
      <rect>
       <x>30</x>
@@ -535,52 +483,832 @@ QPushButton:pressed {
       <height>511</height>
      </rect>
     </property>
-    <property name="background_color" stdset="0">
-     <color alpha="150">
-      <red>0</red>
-      <green>0</green>
-      <blue>0</blue>
-     </color>
-    </property>
+    <widget class="GCodeGraphics" name="gcode_viewer">
+     <property name="geometry">
+      <rect>
+       <x>0</x>
+       <y>0</y>
+       <width>511</width>
+       <height>511</height>
+      </rect>
+     </property>
+     <property name="background_color" stdset="0">
+      <color alpha="150">
+       <red>0</red>
+       <green>0</green>
+       <blue>0</blue>
+      </color>
+     </property>
+    </widget>
+    <widget class="QGroupBox" name="groupBox_dro">
+     <property name="geometry">
+      <rect>
+       <x>5</x>
+       <y>5</y>
+       <width>200</width>
+       <height>110</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">QGroupBox {
+    background-color: rgba(0, 0, 0, 200);
+    border: 1px solid #00ff00;
+    border-radius: 3px;
+    color: #00ff00;
+    font-size: 9pt;
+    font-weight: bold;
+}</string>
+     </property>
+     <property name="title">
+      <string>Position</string>
+     </property>
+     <widget class="QLabel" name="label">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>25</y>
+        <width>20</width>
+        <height>25</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>10</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">color: #00ff00;</string>
+      </property>
+      <property name="text">
+       <string>X:</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <widget class="DROLabel" name="dro_x">
+      <property name="geometry">
+       <rect>
+        <x>35</x>
+        <y>23</y>
+        <width>160</width>
+        <height>28</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Monospace</family>
+        <pointsize>12</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
+      </property>
+      <property name="text">
+       <string>0.000</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_2">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>52</y>
+        <width>20</width>
+        <height>25</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>10</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">color: #00ff00;</string>
+      </property>
+      <property name="text">
+       <string>Y:</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <widget class="DROLabel" name="dro_y">
+      <property name="geometry">
+       <rect>
+        <x>35</x>
+        <y>50</y>
+        <width>160</width>
+        <height>28</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Monospace</family>
+        <pointsize>12</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
+      </property>
+      <property name="text">
+       <string>0.000</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_3">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>79</y>
+        <width>20</width>
+        <height>25</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>10</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">color: #00ff00;</string>
+      </property>
+      <property name="text">
+       <string>Z:</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <widget class="DROLabel" name="dro_z">
+      <property name="geometry">
+       <rect>
+        <x>35</x>
+        <y>77</y>
+        <width>160</width>
+        <height>28</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Monospace</family>
+        <pointsize>12</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
+      </property>
+      <property name="text">
+       <string>0.000</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+    </widget>
    </widget>
    <widget class="QStackedWidget" name="stackedWidget_modes">
     <property name="geometry">
      <rect>
       <x>560</x>
       <y>20</y>
-      <width>531</width>
-      <height>741</height>
+      <width>440</width>
+      <height>760</height>
      </rect>
     </property>
     <property name="currentIndex">
      <number>0</number>
     </property>
     <widget class="QWidget" name="page_manual">
-     <widget class="QGroupBox" name="groupBox_spindle">
+     <widget class="QGroupBox" name="groupBox_jog">
       <property name="geometry">
        <rect>
-        <x>0</x>
-        <y>10</y>
+        <x>10</x>
+        <y>20</y>
         <width>420</width>
-        <height>180</height>
+        <height>420</height>
        </rect>
       </property>
       <property name="title">
-       <string>Spindle Control (Manual Mode)</string>
+       <string>JOG CONTROLS</string>
       </property>
-      <widget class="QLabel" name="label_spindle_speed">
+      <widget class="QLabel" name="label_4">
        <property name="geometry">
         <rect>
-         <x>129</x>
-         <y>25</y>
-         <width>131</width>
-         <height>25</height>
+         <x>20</x>
+         <y>30</y>
+         <width>150</width>
+         <height>20</height>
         </rect>
        </property>
        <property name="font">
         <font>
-         <family>Liberation Sans</family>
-         <pointsize>11</pointsize>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Jog Increment:</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_continuous">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>60</y>
+         <width>90</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>Segoe UI</family>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #333333;
+    color: #FFFFFF;
+    font-family: &quot;Segoe UI&quot;, &quot;Arial&quot;;
+    font-size: 9pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 5px;
+    border-radius: 2px;
+}
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+QPushButton:checked {
+    background-color: #f1c40f;
+    color: #000000;
+    border: 2px solid #d4ac0d;
+}
+QPushButton:pressed {
+    background-color: #f39c12;
+    color: #000000;
+}</string>
+       </property>
+       <property name="text">
+        <string>Continuous</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_10mm">
+       <property name="geometry">
+        <rect>
+         <x>130</x>
+         <y>60</y>
+         <width>60</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>Segoe UI</family>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #333333;
+    color: #FFFFFF;
+    font-family: &quot;Segoe UI&quot;, &quot;Arial&quot;;
+    font-size: 9pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 5px;
+    border-radius: 2px;
+}
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+QPushButton:checked {
+    background-color: #f1c40f;
+    color: #000000;
+    border: 2px solid #d4ac0d;
+}
+QPushButton:pressed {
+    background-color: #f39c12;
+    color: #000000;
+}</string>
+       </property>
+       <property name="text">
+        <string>10mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_1mm">
+       <property name="geometry">
+        <rect>
+         <x>210</x>
+         <y>60</y>
+         <width>60</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>Segoe UI</family>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #333333;
+    color: #FFFFFF;
+    font-family: &quot;Segoe UI&quot;, &quot;Arial&quot;;
+    font-size: 9pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 5px;
+    border-radius: 2px;
+}
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+QPushButton:checked {
+    background-color: #f1c40f;
+    color: #000000;
+    border: 2px solid #d4ac0d;
+}
+QPushButton:pressed {
+    background-color: #f39c12;
+    color: #000000;
+}</string>
+       </property>
+       <property name="text">
+        <string>1mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_0_1mm">
+       <property name="geometry">
+        <rect>
+         <x>290</x>
+         <y>60</y>
+         <width>60</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>Segoe UI</family>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #333333;
+    color: #FFFFFF;
+    font-family: &quot;Segoe UI&quot;, &quot;Arial&quot;;
+    font-size: 9pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 5px;
+    border-radius: 2px;
+}
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+QPushButton:checked {
+    background-color: #f1c40f;
+    color: #000000;
+    border: 2px solid #d4ac0d;
+}
+QPushButton:pressed {
+    background-color: #f39c12;
+    color: #000000;
+}</string>
+       </property>
+       <property name="text">
+        <string>0.1mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_0_01mm">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>100</y>
+         <width>60</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>Segoe UI</family>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #333333;
+    color: #FFFFFF;
+    font-family: &quot;Segoe UI&quot;, &quot;Arial&quot;;
+    font-size: 9pt;
+    font-weight: bold;
+    border: 1px solid #111111;
+    padding: 5px;
+    border-radius: 2px;
+}
+QPushButton:hover {
+    background-color: #444444;
+    border: 1px solid #555555;
+}
+QPushButton:checked {
+    background-color: #f1c40f;
+    color: #000000;
+    border: 2px solid #d4ac0d;
+}
+QPushButton:pressed {
+    background-color: #f39c12;
+    color: #000000;
+}</string>
+       </property>
+       <property name="text">
+        <string>0.01mm</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_jog_2">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>145</y>
+         <width>200</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Jog Velocity: 500mm/min</string>
+       </property>
+      </widget>
+      <widget class="QSlider" name="slider_jog_velocity">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>170</y>
+         <width>380</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="minimum">
+        <number>50</number>
+       </property>
+       <property name="maximum">
+        <number>5000</number>
+       </property>
+       <property name="value">
+        <number>500</number>
+       </property>
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_5">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>210</y>
+         <width>150</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Jog Buttons:</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_xplus">
+       <property name="geometry">
+        <rect>
+         <x>90</x>
+         <y>240</y>
+         <width>60</width>
+         <height>45</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+       </property>
+       <property name="text">
+        <string>X+</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_xminus">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>240</y>
+         <width>60</width>
+         <height>45</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+       </property>
+       <property name="text">
+        <string>X-</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_yplus">
+       <property name="geometry">
+        <rect>
+         <x>200</x>
+         <y>240</y>
+         <width>60</width>
+         <height>45</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+       </property>
+       <property name="text">
+        <string>Y+</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_yminus">
+       <property name="geometry">
+        <rect>
+         <x>130</x>
+         <y>240</y>
+         <width>60</width>
+         <height>45</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+       </property>
+       <property name="text">
+        <string>Y-</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_zplus">
+       <property name="geometry">
+        <rect>
+         <x>340</x>
+         <y>240</y>
+         <width>60</width>
+         <height>45</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+       </property>
+       <property name="text">
+        <string>Z+</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btn_jog_zminus">
+       <property name="geometry">
+        <rect>
+         <x>270</x>
+         <y>240</y>
+         <width>60</width>
+         <height>45</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #2980b9;
+    color: white;
+    border: 2px solid #1c5980;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    border-color: #ffffff;
+}
+QPushButton:pressed {
+    background-color: #1c5980;
+    padding-top: 7px;
+    padding-left: 7px;
+}</string>
+       </property>
+       <property name="text">
+        <string>Z-</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_9">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>300</y>
+         <width>380</width>
+         <height>100</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>8</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>INSTRUCTIONS:
+1. Select jog increment
+2. Adjust jog velocity
+3. Press and hold jog buttons</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox_spindle">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>450</y>
+        <width>201</width>
+        <height>295</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>SPINDLE CONTROL</string>
+      </property>
+      <widget class="QLabel" name="label_spindle_speed">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>30</y>
+         <width>160</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>9</pointsize>
          <weight>75</weight>
          <bold>true</bold>
         </font>
@@ -588,85 +1316,15 @@ QPushButton:pressed {
        <property name="text">
         <string>Speed: 1000 RPM</string>
        </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
       </widget>
       <widget class="QSlider" name="slider_spindle_speed">
        <property name="geometry">
         <rect>
-         <x>80</x>
-         <y>55</y>
-         <width>260</width>
-         <height>16</height>
+         <x>20</x>
+         <y>60</y>
+         <width>160</width>
+         <height>20</height>
         </rect>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">/* --- THE TRACK (The Groove) --- */
-QSlider::groove:horizontal {
-    border: 1px solid #3a3a3a;
-    height: 8px;
-    /* Creates a &quot;recessed&quot; look using a linear gradient */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #1a1a1a, stop:1 #333333);
-    margin: 2px 0;
-    border-radius: 4px;
-}
-
-/* --- THE FILLED PART (Left of the handle) --- */
-QSlider::sub-page:horizontal {
-    /* Glowing blue gradient for the 'active' side */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #5db7ff, stop:1 #2e78d2);
-    border: 1px solid #1c5aa3;
-    height: 8px;
-    border-radius: 4px;
-}
-
-/* --- THE HANDLE (The Thumb) --- */
-QSlider::handle:horizontal {
-    /* Glossy glass effect */
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #f6f7fa, stop:1 #babec5);
-    border: 1px solid #777;
-    width: 20px;
-    height: 20px;
-    margin: -7px 0; /* Centers the larger handle over the track */
-    border-radius: 10px; /* Circular */
-}
-
-/* --- INTERACTIVE STATES --- */
-
-/* Handle glowing on hover */
-QSlider::handle:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #ffffff, stop:1 #d1d5db);
-    border: 1px solid #4A90E2; /* Blue border on hover */
-    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
-}
-
-/* Change the track color when the whole widget is hovered */
-QSlider::groove:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #2a2a2a, stop:1 #444444);
-}
-
-/* Handle pressed state */
-QSlider::handle:horizontal:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #d1d5db, stop:1 #a0a4ab);
-    border: 1px solid #2c5aa0;
-}
-
-/* Disable state */
-QSlider::handle:horizontal:disabled {
-    background: #555;
-    border: 1px solid #333;
-}
-
-QSlider::groove:horizontal:disabled {
-    background: #222;
-}</string>
        </property>
        <property name="minimum">
         <number>100</number>
@@ -684,35 +1342,35 @@ QSlider::groove:horizontal:disabled {
       <widget class="QPushButton" name="btn_spindle_fwd">
        <property name="geometry">
         <rect>
-         <x>50</x>
+         <x>20</x>
          <y>100</y>
-         <width>100</width>
-         <height>60</height>
+         <width>160</width>
+         <height>50</height>
         </rect>
        </property>
        <property name="font">
         <font>
-         <pointsize>11</pointsize>
+         <pointsize>10</pointsize>
          <weight>75</weight>
          <bold>true</bold>
         </font>
        </property>
        <property name="text">
-        <string>FWD</string>
+        <string>FORWARD</string>
        </property>
       </widget>
       <widget class="QPushButton" name="btn_spindle_stop">
        <property name="geometry">
         <rect>
-         <x>160</x>
-         <y>100</y>
-         <width>100</width>
-         <height>60</height>
+         <x>20</x>
+         <y>165</y>
+         <width>160</width>
+         <height>50</height>
         </rect>
        </property>
        <property name="font">
         <font>
-         <pointsize>11</pointsize>
+         <pointsize>10</pointsize>
          <weight>75</weight>
          <bold>true</bold>
         </font>
@@ -724,240 +1382,90 @@ QSlider::groove:horizontal:disabled {
       <widget class="QPushButton" name="btn_spindle_rev">
        <property name="geometry">
         <rect>
-         <x>270</x>
-         <y>100</y>
-         <width>100</width>
-         <height>60</height>
-        </rect>
-       </property>
-       <property name="font">
-        <font>
-         <pointsize>11</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>REV</string>
-       </property>
-      </widget>
-     </widget>
-     <widget class="QGroupBox" name="groupBox_jog_velocity">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>200</y>
-        <width>420</width>
-        <height>100</height>
-       </rect>
-      </property>
-      <property name="title">
-       <string/>
-      </property>
-      <widget class="QLabel" name="label_jog_2">
-       <property name="geometry">
-        <rect>
          <x>20</x>
-         <y>10</y>
-         <width>380</width>
-         <height>25</height>
+         <y>230</y>
+         <width>160</width>
+         <height>50</height>
         </rect>
        </property>
        <property name="font">
         <font>
-         <family>Liberation Sans</family>
          <pointsize>10</pointsize>
          <weight>75</weight>
          <bold>true</bold>
         </font>
        </property>
        <property name="text">
-        <string>Jog Velocity: 500mm/min</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-      <widget class="QSlider" name="slider_jog_velocity">
-       <property name="geometry">
-        <rect>
-         <x>20</x>
-         <y>45</y>
-         <width>380</width>
-         <height>16</height>
-        </rect>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">/* --- THE TRACK (The Groove) --- */
-QSlider::groove:horizontal {
-    border: 1px solid #3a3a3a;
-    height: 8px;
-    /* Creates a &quot;recessed&quot; look using a linear gradient */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #1a1a1a, stop:1 #333333);
-    margin: 2px 0;
-    border-radius: 4px;
-}
-
-/* --- THE FILLED PART (Left of the handle) --- */
-QSlider::sub-page:horizontal {
-    /* Glowing blue gradient for the 'active' side */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #5db7ff, stop:1 #2e78d2);
-    border: 1px solid #1c5aa3;
-    height: 8px;
-    border-radius: 4px;
-}
-
-/* --- THE HANDLE (The Thumb) --- */
-QSlider::handle:horizontal {
-    /* Glossy glass effect */
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #f6f7fa, stop:1 #babec5);
-    border: 1px solid #777;
-    width: 20px;
-    height: 20px;
-    margin: -7px 0; /* Centers the larger handle over the track */
-    border-radius: 10px; /* Circular */
-}
-
-/* --- INTERACTIVE STATES --- */
-
-/* Handle glowing on hover */
-QSlider::handle:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #ffffff, stop:1 #d1d5db);
-    border: 1px solid #4A90E2; /* Blue border on hover */
-    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
-}
-
-/* Change the track color when the whole widget is hovered */
-QSlider::groove:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #2a2a2a, stop:1 #444444);
-}
-
-/* Handle pressed state */
-QSlider::handle:horizontal:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #d1d5db, stop:1 #a0a4ab);
-    border: 1px solid #2c5aa0;
-}
-
-/* Disable state */
-QSlider::handle:horizontal:disabled {
-    background: #555;
-    border: 1px solid #333;
-}
-
-QSlider::groove:horizontal:disabled {
-    background: #222;
-}</string>
-       </property>
-       <property name="minimum">
-        <number>10</number>
-       </property>
-       <property name="maximum">
-        <number>1000</number>
-       </property>
-       <property name="value">
-        <number>500</number>
-       </property>
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
+        <string>REVERSE</string>
        </property>
       </widget>
      </widget>
      <widget class="QGroupBox" name="groupBox_overrides">
       <property name="geometry">
        <rect>
-        <x>10</x>
-        <y>310</y>
-        <width>420</width>
-        <height>100</height>
+        <x>220</x>
+        <y>450</y>
+        <width>210</width>
+        <height>295</height>
        </rect>
       </property>
       <property name="title">
-       <string>Overrides</string>
+       <string>OVERRIDES</string>
       </property>
+      <widget class="QLabel" name="label_feedrate_title">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>30</y>
+         <width>100</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Feed Rate:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_feedrate">
+       <property name="geometry">
+        <rect>
+         <x>130</x>
+         <y>30</y>
+         <width>60</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>9</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>100%</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+       </property>
+      </widget>
       <widget class="QSlider" name="slider_feedrate">
        <property name="geometry">
         <rect>
-         <x>10</x>
-         <y>40</y>
-         <width>200</width>
-         <height>16</height>
+         <x>20</x>
+         <y>60</y>
+         <width>170</width>
+         <height>20</height>
         </rect>
        </property>
-       <property name="styleSheet">
-        <string notr="true">/* --- THE TRACK (The Groove) --- */
-QSlider::groove:horizontal {
-    border: 1px solid #3a3a3a;
-    height: 8px;
-    /* Creates a &quot;recessed&quot; look using a linear gradient */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #1a1a1a, stop:1 #333333);
-    margin: 2px 0;
-    border-radius: 4px;
-}
-
-/* --- THE FILLED PART (Left of the handle) --- */
-QSlider::sub-page:horizontal {
-    /* Glowing blue gradient for the 'active' side */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #5db7ff, stop:1 #2e78d2);
-    border: 1px solid #1c5aa3;
-    height: 8px;
-    border-radius: 4px;
-}
-
-/* --- THE HANDLE (The Thumb) --- */
-QSlider::handle:horizontal {
-    /* Glossy glass effect */
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #f6f7fa, stop:1 #babec5);
-    border: 1px solid #777;
-    width: 20px;
-    height: 20px;
-    margin: -7px 0; /* Centers the larger handle over the track */
-    border-radius: 10px; /* Circular */
-}
-
-/* --- INTERACTIVE STATES --- */
-
-/* Handle glowing on hover */
-QSlider::handle:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #ffffff, stop:1 #d1d5db);
-    border: 1px solid #4A90E2; /* Blue border on hover */
-    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
-}
-
-/* Change the track color when the whole widget is hovered */
-QSlider::groove:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #2a2a2a, stop:1 #444444);
-}
-
-/* Handle pressed state */
-QSlider::handle:horizontal:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #d1d5db, stop:1 #a0a4ab);
-    border: 1px solid #2c5aa0;
-}
-
-/* Disable state */
-QSlider::handle:horizontal:disabled {
-    background: #555;
-    border: 1px solid #333;
-}
-
-QSlider::groove:horizontal:disabled {
-    background: #222;
-}</string>
-       </property>
        <property name="minimum">
-        <number>10</number>
+        <number>0</number>
        </property>
        <property name="maximum">
         <number>200</number>
@@ -969,43 +1477,38 @@ QSlider::groove:horizontal:disabled {
         <enum>Qt::Horizontal</enum>
        </property>
       </widget>
-      <widget class="QLabel" name="label_4">
+      <widget class="QLabel" name="label_rapidrate_title">
        <property name="geometry">
         <rect>
-         <x>60</x>
-         <y>20</y>
+         <x>20</x>
+         <y>100</y>
          <width>100</width>
-         <height>16</height>
+         <height>20</height>
         </rect>
        </property>
        <property name="font">
         <font>
-         <family>Liberation Sans</family>
          <pointsize>9</pointsize>
          <weight>75</weight>
          <bold>true</bold>
         </font>
        </property>
        <property name="text">
-        <string>Feed Rate</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
+        <string>Rapid Rate:</string>
        </property>
       </widget>
-      <widget class="QLabel" name="label_feedrate">
+      <widget class="QLabel" name="label_rapidrate">
        <property name="geometry">
         <rect>
-         <x>70</x>
-         <y>60</y>
-         <width>80</width>
+         <x>130</x>
+         <y>100</y>
+         <width>60</width>
          <height>20</height>
         </rect>
        </property>
        <property name="font">
         <font>
-         <family>Liberation Sans</family>
-         <pointsize>10</pointsize>
+         <pointsize>9</pointsize>
          <weight>75</weight>
          <bold>true</bold>
         </font>
@@ -1014,87 +1517,20 @@ QSlider::groove:horizontal:disabled {
         <string>100%</string>
        </property>
        <property name="alignment">
-        <set>Qt::AlignCenter</set>
+        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
        </property>
       </widget>
       <widget class="QSlider" name="slider_rapidrate">
        <property name="geometry">
         <rect>
-         <x>210</x>
-         <y>40</y>
-         <width>200</width>
-         <height>16</height>
+         <x>20</x>
+         <y>130</y>
+         <width>170</width>
+         <height>20</height>
         </rect>
        </property>
-       <property name="styleSheet">
-        <string notr="true">/* --- THE TRACK (The Groove) --- */
-QSlider::groove:horizontal {
-    border: 1px solid #3a3a3a;
-    height: 8px;
-    /* Creates a &quot;recessed&quot; look using a linear gradient */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #1a1a1a, stop:1 #333333);
-    margin: 2px 0;
-    border-radius: 4px;
-}
-
-/* --- THE FILLED PART (Left of the handle) --- */
-QSlider::sub-page:horizontal {
-    /* Glowing blue gradient for the 'active' side */
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #5db7ff, stop:1 #2e78d2);
-    border: 1px solid #1c5aa3;
-    height: 8px;
-    border-radius: 4px;
-}
-
-/* --- THE HANDLE (The Thumb) --- */
-QSlider::handle:horizontal {
-    /* Glossy glass effect */
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #f6f7fa, stop:1 #babec5);
-    border: 1px solid #777;
-    width: 20px;
-    height: 20px;
-    margin: -7px 0; /* Centers the larger handle over the track */
-    border-radius: 10px; /* Circular */
-}
-
-/* --- INTERACTIVE STATES --- */
-
-/* Handle glowing on hover */
-QSlider::handle:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #ffffff, stop:1 #d1d5db);
-    border: 1px solid #4A90E2; /* Blue border on hover */
-    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Note: Qt simulates this via border */
-}
-
-/* Change the track color when the whole widget is hovered */
-QSlider::groove:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                stop:0 #2a2a2a, stop:1 #444444);
-}
-
-/* Handle pressed state */
-QSlider::handle:horizontal:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                stop:0 #d1d5db, stop:1 #a0a4ab);
-    border: 1px solid #2c5aa0;
-}
-
-/* Disable state */
-QSlider::handle:horizontal:disabled {
-    background: #555;
-    border: 1px solid #333;
-}
-
-QSlider::groove:horizontal:disabled {
-    background: #222;
-}</string>
-       </property>
        <property name="minimum">
-        <number>10</number>
+        <number>0</number>
        </property>
        <property name="maximum">
         <number>100</number>
@@ -1106,514 +1542,6 @@ QSlider::groove:horizontal:disabled {
         <enum>Qt::Horizontal</enum>
        </property>
       </widget>
-      <widget class="QLabel" name="label_5">
-       <property name="geometry">
-        <rect>
-         <x>260</x>
-         <y>20</y>
-         <width>100</width>
-         <height>16</height>
-        </rect>
-       </property>
-       <property name="font">
-        <font>
-         <family>Liberation Sans</family>
-         <pointsize>9</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>Rapid Rate</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-      <widget class="QLabel" name="label_rapidrate">
-       <property name="geometry">
-        <rect>
-         <x>270</x>
-         <y>60</y>
-         <width>80</width>
-         <height>20</height>
-        </rect>
-       </property>
-       <property name="font">
-        <font>
-         <family>Liberation Sans</family>
-         <pointsize>10</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>100%</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_continuous">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>400</y>
-        <width>98</width>
-        <height>30</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <family>Segoe UI</family>
-        <pointsize>10</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #555555;
-    color: #FFFFFF;
-    border: 2px solid #333333;
-    padding: 5px;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    background-color: #666666;
-    border-color: #FFFFFF;
-}
-QPushButton:checked {
-    background-color: #f39c12;
-    color: #000000;
-    border: 2px solid #d68910;
-}
-QPushButton:pressed {
-    background-color: #d68910;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>CONTINUOUS</string>
-      </property>
-      <property name="checkable">
-       <bool>true</bool>
-      </property>
-      <property name="checked">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_10mm">
-      <property name="geometry">
-       <rect>
-        <x>120</x>
-        <y>400</y>
-        <width>54</width>
-        <height>30</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <family>Segoe UI</family>
-        <pointsize>10</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #555555;
-    color: #FFFFFF;
-    border: 2px solid #333333;
-    padding: 5px;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    background-color: #666666;
-    border-color: #FFFFFF;
-}
-QPushButton:checked {
-    background-color: #f39c12;
-    color: #000000;
-    border: 2px solid #d68910;
-}
-QPushButton:pressed {
-    background-color: #d68910;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>10 mm</string>
-      </property>
-      <property name="checkable">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_1mm">
-      <property name="geometry">
-       <rect>
-        <x>190</x>
-        <y>400</y>
-        <width>46</width>
-        <height>30</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <family>Segoe UI</family>
-        <pointsize>10</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #555555;
-    color: #FFFFFF;
-    border: 2px solid #333333;
-    padding: 5px;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    background-color: #666666;
-    border-color: #FFFFFF;
-}
-QPushButton:checked {
-    background-color: #f39c12;
-    color: #000000;
-    border: 2px solid #d68910;
-}
-QPushButton:pressed {
-    background-color: #d68910;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>1 mm</string>
-      </property>
-      <property name="checkable">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_0_1mm">
-      <property name="geometry">
-       <rect>
-        <x>250</x>
-        <y>400</y>
-        <width>57</width>
-        <height>30</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <family>Segoe UI</family>
-        <pointsize>10</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #555555;
-    color: #FFFFFF;
-    border: 2px solid #333333;
-    padding: 5px;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    background-color: #666666;
-    border-color: #FFFFFF;
-}
-QPushButton:checked {
-    background-color: #f39c12;
-    color: #000000;
-    border: 2px solid #d68910;
-}
-QPushButton:pressed {
-    background-color: #d68910;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>0.1 mm</string>
-      </property>
-      <property name="checkable">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_0_01mm">
-      <property name="geometry">
-       <rect>
-        <x>320</x>
-        <y>400</y>
-        <width>65</width>
-        <height>30</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <family>Segoe UI</family>
-        <pointsize>10</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #555555;
-    color: #FFFFFF;
-    border: 2px solid #333333;
-    padding: 5px;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    background-color: #666666;
-    border-color: #FFFFFF;
-}
-QPushButton:checked {
-    background-color: #f39c12;
-    color: #000000;
-    border: 2px solid #d68910;
-}
-QPushButton:pressed {
-    background-color: #d68910;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>0.01 mm</string>
-      </property>
-      <property name="checkable">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_yplus">
-      <property name="geometry">
-       <rect>
-        <x>120</x>
-        <y>460</y>
-        <width>91</width>
-        <height>81</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <pointsize>12</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #27ae60;
-    color: white;
-    border: 2px solid #1e8449;
-    font-weight: bold;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    border-color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #1e8449;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>Y+</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_yminus">
-      <property name="geometry">
-       <rect>
-        <x>120</x>
-        <y>630</y>
-        <width>91</width>
-        <height>81</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <pointsize>12</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #27ae60;
-    color: white;
-    border: 2px solid #1e8449;
-    font-weight: bold;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    border-color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #1e8449;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>Y-</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_xplus">
-      <property name="geometry">
-       <rect>
-        <x>210</x>
-        <y>540</y>
-        <width>91</width>
-        <height>81</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <pointsize>12</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #2980b9;
-    color: white;
-    border: 2px solid #1c5980;
-    font-weight: bold;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    border-color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #1c5980;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>X+</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_xminus">
-      <property name="geometry">
-       <rect>
-        <x>20</x>
-        <y>540</y>
-        <width>101</width>
-        <height>81</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <pointsize>12</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #2980b9;
-    color: white;
-    border: 2px solid #1c5980;
-    font-weight: bold;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    border-color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #1c5980;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>X-</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_zminus">
-      <property name="geometry">
-       <rect>
-        <x>350</x>
-        <y>570</y>
-        <width>91</width>
-        <height>71</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <pointsize>12</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #8e44ad;
-    color: white;
-    border: 2px solid #6c3483;
-    font-weight: bold;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    border-color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #6c3483;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>Z-</string>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="btn_jog_zplus">
-      <property name="geometry">
-       <rect>
-        <x>350</x>
-        <y>470</y>
-        <width>91</width>
-        <height>71</height>
-       </rect>
-      </property>
-      <property name="font">
-       <font>
-        <pointsize>12</pointsize>
-        <weight>75</weight>
-        <bold>true</bold>
-       </font>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #8e44ad;
-    color: white;
-    border: 2px solid #6c3483;
-    font-weight: bold;
-    border-radius: 4px;
-}
-QPushButton:hover {
-    border-color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #6c3483;
-    padding-top: 7px;
-    padding-left: 7px;
-}</string>
-      </property>
-      <property name="text">
-       <string>Z+</string>
-      </property>
      </widget>
     </widget>
     <widget class="QWidget" name="page_mdi">
@@ -1622,19 +1550,19 @@ QPushButton:pressed {
        <rect>
         <x>10</x>
         <y>10</y>
-        <width>481</width>
-        <height>651</height>
+        <width>420</width>
+        <height>540</height>
        </rect>
       </property>
       <property name="title">
        <string>MDI - Manual Data Input</string>
       </property>
-      <widget class="QLabel" name="label_9">
+      <widget class="QLabel" name="label_mdi">
        <property name="geometry">
         <rect>
          <x>20</x>
          <y>30</y>
-         <width>380</width>
+         <width>150</width>
          <height>20</height>
         </rect>
        </property>
@@ -1646,7 +1574,7 @@ QPushButton:pressed {
         </font>
        </property>
        <property name="text">
-        <string>Enter G-code Command:</string>
+        <string>G-code Command:</string>
        </property>
       </widget>
       <widget class="QLineEdit" name="text_mdi_input">
@@ -1655,29 +1583,31 @@ QPushButton:pressed {
          <x>20</x>
          <y>60</y>
          <width>380</width>
-         <height>35</height>
+         <height>40</height>
         </rect>
        </property>
        <property name="font">
         <font>
          <family>Monospace</family>
-         <pointsize>10</pointsize>
+         <pointsize>11</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true">background-color: #FFFFFF; color: #000000; padding: 5px;</string>
+        <string notr="true">background-color: #1a1a1a; color: #00ff00; padding: 5px;</string>
        </property>
        <property name="placeholderText">
-        <string>G0 G1 X10 Y10 Z5 or G1 X0 F100 or M3 S1000</string>
+        <string>Enter G-code (e.g., G0 X10 Y20)</string>
        </property>
       </widget>
       <widget class="QPushButton" name="btn_mdi_execute">
        <property name="geometry">
         <rect>
          <x>20</x>
-         <y>110</y>
-         <width>190</width>
-         <height>45</height>
+         <y>115</y>
+         <width>280</width>
+         <height>40</height>
         </rect>
        </property>
        <property name="font">
@@ -1705,16 +1635,16 @@ QPushButton:pressed {
 }</string>
        </property>
        <property name="text">
-        <string>EXECUTE (Enter)</string>
+        <string>EXECUTE</string>
        </property>
       </widget>
       <widget class="QPushButton" name="btn_mdi_clear">
        <property name="geometry">
         <rect>
-         <x>220</x>
-         <y>110</y>
-         <width>180</width>
-         <height>45</height>
+         <x>320</x>
+         <y>115</y>
+         <width>80</width>
+         <height>40</height>
         </rect>
        </property>
        <property name="font">
@@ -1726,9 +1656,9 @@ QPushButton:pressed {
        </property>
        <property name="styleSheet">
         <string notr="true">QPushButton {
-    background-color: #e67e22;
+    background-color: #c0392b;
     color: white;
-    border: 2px solid #ca6f1e;
+    border: 2px solid #943126;
     font-weight: bold;
     border-radius: 4px;
 }
@@ -1736,13 +1666,13 @@ QPushButton:hover {
     border-color: #ffffff;
 }
 QPushButton:pressed {
-    background-color: #ca6f1e;
+    background-color: #943126;
     padding-top: 7px;
     padding-left: 7px;
 }</string>
        </property>
        <property name="text">
-        <string>CLEAR HISTORY</string>
+        <string>CLEAR</string>
        </property>
       </widget>
       <widget class="QLabel" name="label_10">
