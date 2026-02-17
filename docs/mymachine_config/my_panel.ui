@@ -506,7 +506,7 @@ QPushButton:pressed {
        <x>5</x>
        <y>5</y>
        <width>200</width>
-       <height>110</height>
+       <height>140</height>
       </rect>
      </property>
      <property name="styleSheet">
@@ -681,6 +681,61 @@ QPushButton:pressed {
        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
       </property>
      </widget>
+     <!-- — ADDED: MAX AXIS VELOCITY DISPLAY — -->
+     <widget class="QLabel" name="label_vel">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>106</y>
+        <width>20</width>
+        <height>25</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>10</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">color: #00ff00;</string>
+      </property>
+      <property name="text">
+       <string>V:</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <widget class="QLabel" name="dro_velocity">
+      <property name="geometry">
+       <rect>
+        <x>35</x>
+        <y>104</y>
+        <width>160</width>
+        <height>28</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Monospace</family>
+        <pointsize>12</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
+      </property>
+      <property name="text">
+       <string>0.000 mm/min</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <!-- — END ADDED: MAX AXIS VELOCITY DISPLAY — -->
     </widget>
    </widget>
    <widget class="QStackedWidget" name="stackedWidget_modes">

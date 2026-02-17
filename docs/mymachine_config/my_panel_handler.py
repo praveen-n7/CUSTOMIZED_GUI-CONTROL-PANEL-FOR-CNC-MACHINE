@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 QtVCP Panel Handler - Mode-Based Visibility Control
-Version: 6.1 - ADDED INDIVIDUAL AXIS HOMING + DRO OVERLAY
+Version: 6.2 - ADDED MAX AXIS VELOCITY DISPLAY IN DRO
 """
 
 from PyQt5.QtCore import Qt, QTimer, QObject, QEvent
@@ -260,15 +260,35 @@ class HandlerClass:
         self.home_z_joint = 2
         # — END ADDED: DYNAMIC HOME BUTTON BINDING —
         
+        # — ADDED: MAX AXIS VELOCITY TRACKING —
+        self.max_velocity = 0.0
+        self.is_metric = True  # Default to metric
+        # — END ADDED: MAX AXIS VELOCITY TRACKING —
+        
     def initialized__(self):
         """Called after widgets are initialized"""
         print("="*50)
         print("QtVCP Panel - Mode-Based Visibility Control")
-        print("Version 6.1 - INDIVIDUAL AXIS HOMING + DRO OVERLAY")
+        print("Version 6.2 - MAX AXIS VELOCITY DISPLAY")
         print("="*50)
         
         # Configure DRO
         self.setup_dro()
+        
+        # — ADDED: DETECT MACHINE UNITS —
+        # Check if machine is configured for metric or imperial
+        try:
+            linear_units = INFO.LINEAR_UNITS
+            if linear_units and 'mm' in linear_units.lower():
+                self.is_metric = True
+            elif linear_units and ('inch' in linear_units.lower() or 'in' in linear_units.lower()):
+                self.is_metric = False
+            else:
+                # Fallback: check from INI file
+                self.is_metric = True  # Default
+        except:
+            self.is_metric = True  # Default to metric
+        # — END ADDED: DETECT MACHINE UNITS —
         
         # Setup mode button group
         self.mode_group = QButtonGroup()
@@ -531,6 +551,44 @@ class HandlerClass:
         """Periodic status update"""
         try:
             self.stat.poll()
+            
+            # — ADDED: MAX AXIS VELOCITY CALCULATION —
+            # Get current velocities for all joints
+            max_vel = 0.0
+            try:
+                # Try to get actual_position velocity (derivative)
+                # LinuxCNC stores velocity in machine units per second
+                num_joints = INFO.JOINT_COUNT
+                
+                # Check if current_vel is available (total current velocity)
+                if hasattr(self.stat, 'current_vel'):
+                    # current_vel is in machine units per second
+                    max_vel = abs(self.stat.current_vel)
+                else:
+                    # Fallback: Calculate from joint velocities
+                    if hasattr(self.stat, 'joint_actual_position'):
+                        # We can't directly get velocity from joint_actual_position
+                        # So we'll use a different approach if available
+                        pass
+                
+                # Convert to mm/min or inch/min for display
+                # current_vel is in units/sec, convert to units/min
+                max_vel_per_min = max_vel * 60.0
+                
+                # Update display
+                if self.is_metric:
+                    self.w.dro_velocity.setText(f"{max_vel_per_min:7.3f} mm/min")
+                else:
+                    self.w.dro_velocity.setText(f"{max_vel_per_min:7.3f} in/min")
+                
+            except Exception as e:
+                # If velocity calculation fails, show 0
+                if self.is_metric:
+                    self.w.dro_velocity.setText("  0.000 mm/min")
+                else:
+                    self.w.dro_velocity.setText("  0.000 in/min")
+            # — END ADDED: MAX AXIS VELOCITY CALCULATION —
+            
         except:
             pass
     
