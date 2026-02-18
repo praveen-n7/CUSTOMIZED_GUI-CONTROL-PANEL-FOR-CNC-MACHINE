@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 QtVCP Panel Handler - Mode-Based Visibility Control
-Version: 6.2 - ADDED MAX AXIS VELOCITY DISPLAY IN DRO
+Version: 7.0 - FULLY INI-DRIVEN MACHINE CONFIGURATION
+All machine-specific parameters now loaded from active INI file
 """
 
 from PyQt5.QtCore import Qt, QTimer, QObject, QEvent
@@ -236,13 +237,17 @@ class HandlerClass:
         self.command = linuxcnc.command()
         self.stat = linuxcnc.stat()
         
-        # Jog settings
-        self.jog_speed = 500  # mm/min
-        self.jog_increment = 10.0
-        self.jog_mode = "increment"
+        # Machine configuration - loaded from INI
+        self.machine_config = {}
         
-        # Spindle settings
-        self.spindle_speed = 1000
+        # Jog settings - will be populated from INI
+        self.jog_speed = 500  # Temporary default, overridden by load_machine_configuration
+        self.jog_increment = 10.0  # Temporary default
+        self.jog_mode = "increment"
+        self.jog_increments = []  # Will be populated based on units
+        
+        # Spindle settings - will be populated from INI
+        self.spindle_speed = 1000  # Temporary default
         
         # Current mode
         self.current_mode = "MANUAL"
@@ -253,42 +258,266 @@ class HandlerClass:
         self.auto_feedrate_override = 100
         self.last_highlighted_line = -1
         
-        # — ADDED: DYNAMIC HOME BUTTON BINDING —
-        # Default joint to axis mapping
-        self.home_x_joint = 0
-        self.home_y_joint = 1
-        self.home_z_joint = 2
-        # — END ADDED: DYNAMIC HOME BUTTON BINDING —
+        # Joint to axis mapping - will be populated from INI
+        self.home_x_joint = 0  # Temporary default
+        self.home_y_joint = 1  # Temporary default
+        self.home_z_joint = 2  # Temporary default
+        self.axis_to_joint_map = {}  # Maps 'X' -> joint_num, 'Y' -> joint_num, etc.
         
-        # — ADDED: MAX AXIS VELOCITY TRACKING —
+        # Axis velocity tracking
         self.max_velocity = 0.0
-        self.is_metric = True  # Default to metric
-        # — END ADDED: MAX AXIS VELOCITY TRACKING —
+        self.is_metric = True  # Will be determined from INI
+        
+        # Load all machine configuration from INI file
+        self.load_machine_configuration()
+        
+    def load_machine_configuration(self):
+        """
+        Load all machine-specific configuration from active INI file.
+        This makes the handler completely machine-independent.
+        """
+        print("\n" + "="*60)
+        print("LOADING MACHINE CONFIGURATION FROM INI")
+        print("="*60)
+        
+        try:
+            # ═══════════════════════════════════════════════════════════
+            # 1. DETECT LINEAR UNITS (metric vs imperial)
+            # ═══════════════════════════════════════════════════════════
+            try:
+                # Read from INFO object (preferred method)
+                linear_units = INFO.LINEAR_UNITS
+                if linear_units:
+                    if 'mm' in linear_units.lower():
+                        self.is_metric = True
+                        self.machine_config['units'] = 'metric'
+                        self.machine_config['units_label'] = 'mm'
+                    elif 'inch' in linear_units.lower() or 'in' in linear_units.lower():
+                        self.is_metric = False
+                        self.machine_config['units'] = 'imperial'
+                        self.machine_config['units_label'] = 'in'
+                    else:
+                        # Fallback to INI file parsing
+                        ini = linuxcnc.ini(INFO.INI_FILE)
+                        traj_units = ini.find('TRAJ', 'LINEAR_UNITS')
+                        if traj_units and 'mm' in traj_units.lower():
+                            self.is_metric = True
+                            self.machine_config['units'] = 'metric'
+                            self.machine_config['units_label'] = 'mm'
+                        else:
+                            self.is_metric = False
+                            self.machine_config['units'] = 'imperial'
+                            self.machine_config['units_label'] = 'in'
+                else:
+                    # Default fallback
+                    self.is_metric = True
+                    self.machine_config['units'] = 'metric'
+                    self.machine_config['units_label'] = 'mm'
+            except Exception as e:
+                print(f"  ⚠ Units detection error: {e}, defaulting to metric")
+                self.is_metric = True
+                self.machine_config['units'] = 'metric'
+                self.machine_config['units_label'] = 'mm'
+            
+            print(f"✓ Linear Units: {self.machine_config['units']} ({self.machine_config['units_label']})")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 2. DETECT JOINT COUNT
+            # ═══════════════════════════════════════════════════════════
+            try:
+                joint_count = INFO.JOINT_COUNT
+                self.machine_config['joint_count'] = joint_count
+            except Exception as e:
+                print(f"  ⚠ Joint count error: {e}, defaulting to 3")
+                self.machine_config['joint_count'] = 3
+            
+            print(f"✓ Joint Count: {self.machine_config['joint_count']}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 3. DETECT AXIS LETTERS FROM COORDINATES
+            # ═══════════════════════════════════════════════════════════
+            try:
+                # Read COORDINATES from [TRAJ] section
+                coordinates = INFO.COORDINATES
+                if coordinates:
+                    # Parse coordinates string (e.g., "XYZ", "XYZA", "XYZAB")
+                    self.machine_config['axes'] = list(coordinates.upper())
+                else:
+                    # Fallback: try reading directly from INI
+                    ini = linuxcnc.ini(INFO.INI_FILE)
+                    coords = ini.find('TRAJ', 'COORDINATES')
+                    if coords:
+                        self.machine_config['axes'] = list(coords.upper())
+                    else:
+                        # Ultimate fallback
+                        self.machine_config['axes'] = ['X', 'Y', 'Z']
+            except Exception as e:
+                print(f"  ⚠ Axis detection error: {e}, defaulting to XYZ")
+                self.machine_config['axes'] = ['X', 'Y', 'Z']
+            
+            print(f"✓ Axes: {' '.join(self.machine_config['axes'])}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 4. BUILD AXIS-TO-JOINT MAPPING
+            # ═══════════════════════════════════════════════════════════
+            # Assume trivial kinematics: axis index = joint index
+            for idx, axis_letter in enumerate(self.machine_config['axes']):
+                if idx < self.machine_config['joint_count']:
+                    self.axis_to_joint_map[axis_letter] = idx
+            
+            print(f"✓ Axis-to-Joint Map: {self.axis_to_joint_map}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 5. SET DEFAULT HOME JOINT ASSIGNMENTS
+            # ═══════════════════════════════════════════════════════════
+            # Home buttons are labeled X, Y, Z
+            # Map them to corresponding joints based on axis configuration
+            self.home_x_joint = self.axis_to_joint_map.get('X', 0)
+            self.home_y_joint = self.axis_to_joint_map.get('Y', 1)
+            self.home_z_joint = self.axis_to_joint_map.get('Z', 2)
+            
+            print(f"✓ Home Button Mapping: X→Joint{self.home_x_joint}, Y→Joint{self.home_y_joint}, Z→Joint{self.home_z_joint}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 6. LOAD JOINT MAX VELOCITIES
+            # ═══════════════════════════════════════════════════════════
+            try:
+                ini = linuxcnc.ini(INFO.INI_FILE)
+                joint_velocities = []
+                
+                for joint_num in range(self.machine_config['joint_count']):
+                    try:
+                        max_vel = ini.find(f'JOINT_{joint_num}', 'MAX_VELOCITY')
+                        if max_vel:
+                            joint_velocities.append(float(max_vel))
+                        else:
+                            joint_velocities.append(25.0)  # Fallback
+                    except:
+                        joint_velocities.append(25.0)  # Fallback
+                
+                self.machine_config['joint_max_velocities'] = joint_velocities
+                
+                # Find global maximum velocity for jog speed limits
+                if joint_velocities:
+                    self.max_velocity = min(joint_velocities)  # Use minimum to stay safe
+                else:
+                    self.max_velocity = 25.0
+                
+            except Exception as e:
+                print(f"  ⚠ Velocity detection error: {e}, using defaults")
+                self.machine_config['joint_max_velocities'] = [25.0] * self.machine_config['joint_count']
+                self.max_velocity = 25.0
+            
+            print(f"✓ Joint Max Velocities: {self.machine_config['joint_max_velocities']}")
+            print(f"✓ Global Max Velocity (for jog): {self.max_velocity} {self.machine_config['units_label']}/s")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 7. SET DEFAULT JOG SPEED (20% of max velocity)
+            # ═══════════════════════════════════════════════════════════
+            # Convert to mm/min or in/min for display
+            self.jog_speed = int(self.max_velocity * 60.0 * 0.20)  # 20% of max, converted to per-minute
+            print(f"✓ Default Jog Speed: {self.jog_speed} {self.machine_config['units_label']}/min (20% of max)")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 8. GENERATE JOG INCREMENTS BASED ON UNITS
+            # ═══════════════════════════════════════════════════════════
+            if self.is_metric:
+                # Metric increments: 10mm, 1mm, 0.1mm, 0.01mm
+                self.jog_increments = [10.0, 1.0, 0.1, 0.01]
+                self.jog_increment = 10.0  # Default
+            else:
+                # Imperial increments: 1in, 0.1in, 0.01in, 0.001in
+                self.jog_increments = [1.0, 0.1, 0.01, 0.001]
+                self.jog_increment = 0.1  # Default
+            
+            self.machine_config['jog_increments'] = self.jog_increments
+            print(f"✓ Jog Increments: {self.jog_increments} {self.machine_config['units_label']}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 9. LOAD SPINDLE CONFIGURATION
+            # ═══════════════════════════════════════════════════════════
+            try:
+                ini = linuxcnc.ini(INFO.INI_FILE)
+                
+                # Try to read MAX_FORWARD_VELOCITY from [SPINDLE_0]
+                max_spindle = ini.find('SPINDLE_0', 'MAX_FORWARD_VELOCITY')
+                if max_spindle:
+                    self.machine_config['max_spindle_speed'] = float(max_spindle)
+                else:
+                    # Fallback: try old-style [DISPLAY]
+                    max_spindle = ini.find('DISPLAY', 'MAX_SPINDLE_SPEED')
+                    if max_spindle:
+                        self.machine_config['max_spindle_speed'] = float(max_spindle)
+                    else:
+                        self.machine_config['max_spindle_speed'] = 24000.0  # Default
+                
+                # Set default spindle speed to 20% of max
+                self.spindle_speed = int(self.machine_config['max_spindle_speed'] * 0.20)
+                
+            except Exception as e:
+                print(f"  ⚠ Spindle detection error: {e}, using defaults")
+                self.machine_config['max_spindle_speed'] = 24000.0
+                self.spindle_speed = 1000
+            
+            print(f"✓ Max Spindle Speed: {self.machine_config['max_spindle_speed']} RPM")
+            print(f"✓ Default Spindle Speed: {self.spindle_speed} RPM (20% of max)")
+            
+            # ═══════════════════════════════════════════════════════════
+            # 10. LOAD DEFAULT LINEAR VELOCITY FROM [TRAJ]
+            # ═══════════════════════════════════════════════════════════
+            try:
+                ini = linuxcnc.ini(INFO.INI_FILE)
+                default_vel = ini.find('TRAJ', 'DEFAULT_LINEAR_VELOCITY')
+                if default_vel:
+                    self.machine_config['default_linear_velocity'] = float(default_vel)
+                else:
+                    self.machine_config['default_linear_velocity'] = 5.0
+            except:
+                self.machine_config['default_linear_velocity'] = 5.0
+            
+            print(f"✓ Default Linear Velocity: {self.machine_config['default_linear_velocity']} {self.machine_config['units_label']}/s")
+            
+            print("="*60)
+            print("MACHINE CONFIGURATION LOADED SUCCESSFULLY")
+            print("="*60 + "\n")
+            
+        except Exception as e:
+            print(f"⚠ CRITICAL ERROR loading machine configuration: {e}")
+            print("Using fallback defaults")
+            # Set safe fallback values
+            self.machine_config = {
+                'joint_count': 3,
+                'axes': ['X', 'Y', 'Z'],
+                'units': 'metric',
+                'units_label': 'mm',
+                'joint_max_velocities': [25.0, 25.0, 20.0],
+                'max_spindle_speed': 24000.0,
+                'jog_increments': [10.0, 1.0, 0.1, 0.01],
+                'default_linear_velocity': 5.0
+            }
+            self.is_metric = True
+            self.max_velocity = 25.0
+            self.jog_speed = 300
+            self.spindle_speed = 1000
+            self.jog_increments = [10.0, 1.0, 0.1, 0.01]
+            self.jog_increment = 10.0
+            print("="*60 + "\n")
         
     def initialized__(self):
         """Called after widgets are initialized"""
         print("="*50)
         print("QtVCP Panel - Mode-Based Visibility Control")
-        print("Version 6.2 - MAX AXIS VELOCITY DISPLAY")
+        print("Version 7.0 - FULLY INI-DRIVEN CONFIGURATION")
         print("="*50)
         
-        # Configure DRO
-        self.setup_dro()
+        # Configure DRO dynamically based on detected axes
+        self.setup_dro_dynamic()
         
-        # — ADDED: DETECT MACHINE UNITS —
-        # Check if machine is configured for metric or imperial
-        try:
-            linear_units = INFO.LINEAR_UNITS
-            if linear_units and 'mm' in linear_units.lower():
-                self.is_metric = True
-            elif linear_units and ('inch' in linear_units.lower() or 'in' in linear_units.lower()):
-                self.is_metric = False
-            else:
-                # Fallback: check from INI file
-                self.is_metric = True  # Default
-        except:
-            self.is_metric = True  # Default to metric
-        # — END ADDED: DETECT MACHINE UNITS —
+        # Configure jog controls dynamically
+        self.setup_jog_controls_dynamic()
+        
+        # Configure spindle controls dynamically
+        self.setup_spindle_controls_dynamic()
         
         # Setup mode button group
         self.mode_group = QButtonGroup()
@@ -316,17 +545,13 @@ class HandlerClass:
         self.w.btn_power.clicked.connect(self.toggle_power)
         self.w.btn_home_all.clicked.connect(self.home_all)
         
-        # — ADDED: JOINT SELECT BUTTON —
         # Connect joint assignment dialog button
         self.w.btn_joint_select.clicked.connect(self.open_joint_assignment_dialog)
-        # — END ADDED: JOINT SELECT BUTTON —
         
-        # — ADDED FOR AXIS HOMING BUTTONS —
         # Connect individual axis homing buttons
         self.w.btn_home_x.clicked.connect(self.home_x_axis)
         self.w.btn_home_y.clicked.connect(self.home_y_axis)
         self.w.btn_home_z.clicked.connect(self.home_z_axis)
-        # — END ADDED FOR AXIS HOMING BUTTONS —
         
         # Connect MDI controls
         self.w.btn_mdi_execute.clicked.connect(self.execute_mdi)
@@ -339,31 +564,32 @@ class HandlerClass:
         self.w.btn_pause.clicked.connect(self.pause_program)
         self.w.btn_stop.clicked.connect(self.stop_program)
         
-        # Connect jog increment buttons
+        # Connect jog increment buttons - use dynamic increments
         self.w.btn_jog_continuous.clicked.connect(lambda: self.set_jog_increment("continuous"))
-        self.w.btn_jog_10mm.clicked.connect(lambda: self.set_jog_increment(10.0))
-        self.w.btn_jog_1mm.clicked.connect(lambda: self.set_jog_increment(1.0))
-        self.w.btn_jog_0_1mm.clicked.connect(lambda: self.set_jog_increment(0.1))
-        self.w.btn_jog_0_01mm.clicked.connect(lambda: self.set_jog_increment(0.01))
+        if len(self.jog_increments) >= 4:
+            self.w.btn_jog_10mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[0]))
+            self.w.btn_jog_1mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[1]))
+            self.w.btn_jog_0_1mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[2]))
+            self.w.btn_jog_0_01mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[3]))
         
         # Connect jog velocity slider
         self.w.slider_jog_velocity.valueChanged.connect(self.update_jog_velocity)
         
-        # Connect jog buttons
-        self.w.btn_jog_xplus.pressed.connect(lambda: self.jog_joint(0, 1))
-        self.w.btn_jog_xplus.released.connect(lambda: self.jog_stop(0))
-        self.w.btn_jog_xminus.pressed.connect(lambda: self.jog_joint(0, -1))
-        self.w.btn_jog_xminus.released.connect(lambda: self.jog_stop(0))
+        # Connect jog buttons - use mapped joints
+        self.w.btn_jog_xplus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, 1))
+        self.w.btn_jog_xplus.released.connect(lambda: self.jog_stop(self.home_x_joint))
+        self.w.btn_jog_xminus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, -1))
+        self.w.btn_jog_xminus.released.connect(lambda: self.jog_stop(self.home_x_joint))
         
-        self.w.btn_jog_yplus.pressed.connect(lambda: self.jog_joint(1, 1))
-        self.w.btn_jog_yplus.released.connect(lambda: self.jog_stop(1))
-        self.w.btn_jog_yminus.pressed.connect(lambda: self.jog_joint(1, -1))
-        self.w.btn_jog_yminus.released.connect(lambda: self.jog_stop(1))
+        self.w.btn_jog_yplus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, 1))
+        self.w.btn_jog_yplus.released.connect(lambda: self.jog_stop(self.home_y_joint))
+        self.w.btn_jog_yminus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, -1))
+        self.w.btn_jog_yminus.released.connect(lambda: self.jog_stop(self.home_y_joint))
         
-        self.w.btn_jog_zplus.pressed.connect(lambda: self.jog_joint(2, 1))
-        self.w.btn_jog_zplus.released.connect(lambda: self.jog_stop(2))
-        self.w.btn_jog_zminus.pressed.connect(lambda: self.jog_joint(2, -1))
-        self.w.btn_jog_zminus.released.connect(lambda: self.jog_stop(2))
+        self.w.btn_jog_zplus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, 1))
+        self.w.btn_jog_zplus.released.connect(lambda: self.jog_stop(self.home_z_joint))
+        self.w.btn_jog_zminus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, -1))
+        self.w.btn_jog_zminus.released.connect(lambda: self.jog_stop(self.home_z_joint))
         
         # Connect spindle controls
         self.w.slider_spindle_speed.valueChanged.connect(self.update_spindle_speed_display)
@@ -375,9 +601,10 @@ class HandlerClass:
         self.w.slider_feedrate.valueChanged.connect(self.update_feedrate_override)
         self.w.slider_rapidrate.valueChanged.connect(self.update_rapid_override)
         
-        # Initialize displays
-        self.update_spindle_speed_display(self.w.slider_spindle_speed.value())
-        self.update_jog_velocity(self.w.slider_jog_velocity.value())
+        # Initialize displays - use our INI-configured values
+        # The sliders were already set correctly in setup_*_controls_dynamic()
+        self.update_spindle_speed_display(self.spindle_speed)
+        self.update_jog_velocity(self.jog_speed)
         
         # Start in MANUAL mode - show manual controls, hide MDI and Auto
         self.w.stackedWidget_modes.setCurrentIndex(0)  # Show page_manual
@@ -388,24 +615,19 @@ class HandlerClass:
         self.timer.timeout.connect(self.periodic_update)
         self.timer.start(100)  # 100ms update rate
         
-        # — ADDED: ARROW KEY TO JOG BUTTON MIRROR —
-        # Create keyboard shortcuts that trigger existing jog button signals
-        # Right Arrow → X+ button
+        # Setup keyboard shortcuts that trigger jog button signals
         self.shortcut_x_plus = QShortcut(QKeySequence(Qt.Key_Right), self.w)
         self.shortcut_x_plus.activated.connect(lambda: self.w.btn_jog_xplus.pressed.emit())
         self.shortcut_x_plus.setAutoRepeat(False)
         
-        # Left Arrow → X- button
         self.shortcut_x_minus = QShortcut(QKeySequence(Qt.Key_Left), self.w)
         self.shortcut_x_minus.activated.connect(lambda: self.w.btn_jog_xminus.pressed.emit())
         self.shortcut_x_minus.setAutoRepeat(False)
         
-        # Up Arrow → Y+ button
         self.shortcut_y_plus = QShortcut(QKeySequence(Qt.Key_Up), self.w)
         self.shortcut_y_plus.activated.connect(lambda: self.w.btn_jog_yplus.pressed.emit())
         self.shortcut_y_plus.setAutoRepeat(False)
         
-        # Down Arrow → Y- button
         self.shortcut_y_minus = QShortcut(QKeySequence(Qt.Key_Down), self.w)
         self.shortcut_y_minus.activated.connect(lambda: self.w.btn_jog_yminus.pressed.emit())
         self.shortcut_y_minus.setAutoRepeat(False)
@@ -413,7 +635,6 @@ class HandlerClass:
         # Install key release filter for jog stop
         self.key_release_filter = KeyReleaseFilter(self)
         self.w.installEventFilter(self.key_release_filter)
-        # — END ADDED: ARROW KEY TO JOG BUTTON MIRROR —
         
         print("\n*** STARTUP SEQUENCE ***")
         print("1. Click E-STOP to clear")
@@ -434,33 +655,136 @@ class HandlerClass:
         print("  ↑ (Up) = Y+     |  ↓ (Down) = Y-")
         print("="*50 + "\n")
     
-    def setup_dro(self):
-        """Configure DRO displays with axis labels"""
+    def setup_dro_dynamic(self):
+        """
+        Configure DRO displays dynamically based on machine axes.
+        Works for 3-axis, 4-axis, 5+ axis systems.
+        """
+        print("\n*** CONFIGURING DRO DYNAMICALLY ***")
+        
         try:
-            # X axis
-            self.w.dro_x.setProperty('joint_number', 0)
-            self.w.dro_x.setProperty('Qjoint_number', 0)
-            self.w.dro_x.setProperty('reference_type', 0)
-            self.w.dro_x.setProperty('metric_units', True)
-            self.w.dro_x.setProperty('mm_text_template', 'X: %10.3f')
+            # Map of DRO widget names to axis letters
+            dro_widgets = {
+                'X': 'dro_x',
+                'Y': 'dro_y',
+                'Z': 'dro_z',
+                'A': 'dro_a',  # If exists in UI
+                'B': 'dro_b',  # If exists in UI
+            }
             
-            # Y axis
-            self.w.dro_y.setProperty('joint_number', 1)
-            self.w.dro_y.setProperty('Qjoint_number', 1)
-            self.w.dro_y.setProperty('reference_type', 0)
-            self.w.dro_y.setProperty('metric_units', True)
-            self.w.dro_y.setProperty('mm_text_template', 'Y: %10.3f')
+            # Configure each axis that exists in machine config
+            for axis_letter in self.machine_config['axes']:
+                widget_name = dro_widgets.get(axis_letter)
+                
+                if widget_name and hasattr(self.w, widget_name):
+                    widget = getattr(self.w, widget_name)
+                    joint_num = self.axis_to_joint_map.get(axis_letter, 0)
+                    
+                    # Set joint number
+                    widget.setProperty('joint_number', joint_num)
+                    widget.setProperty('Qjoint_number', joint_num)
+                    widget.setProperty('reference_type', 0)
+                    
+                    # Set units and template based on metric/imperial
+                    if self.is_metric:
+                        widget.setProperty('metric_units', True)
+                        widget.setProperty('mm_text_template', f'{axis_letter}: %10.3f')
+                    else:
+                        widget.setProperty('metric_units', False)
+                        widget.setProperty('imperial_units', True)
+                        widget.setProperty('inch_text_template', f'{axis_letter}: %10.4f')
+                    
+                    print(f"  ✓ DRO {axis_letter} configured: Joint {joint_num}, Units: {self.machine_config['units_label']}")
             
-            # Z axis
-            self.w.dro_z.setProperty('joint_number', 2)
-            self.w.dro_z.setProperty('Qjoint_number', 2)
-            self.w.dro_z.setProperty('reference_type', 0)
-            self.w.dro_z.setProperty('metric_units', True)
-            self.w.dro_z.setProperty('mm_text_template', 'Z: %10.3f')
+            print("✓ DRO configuration complete\n")
             
-            print("✓ DRO configured (X, Y, Z) - compact overlay at top-left with axis labels")
         except Exception as e:
-            print(f"DRO note: {e}")
+            print(f"⚠ DRO configuration error: {e}")
+            print("  Using fallback static configuration\n")
+    
+    def setup_jog_controls_dynamic(self):
+        """
+        Configure jog controls based on machine limits and units.
+        Sets appropriate slider ranges and default values.
+        """
+        print("*** CONFIGURING JOG CONTROLS DYNAMICALLY ***")
+        
+        try:
+            # Set jog velocity slider range based on max velocity
+            # Range: 0 to max_velocity (in units/sec), converted to units/min for display
+            max_jog_speed_per_min = int(self.max_velocity * 60.0)
+            
+            print(f"  DEBUG: max_velocity = {self.max_velocity} {self.machine_config['units_label']}/s")
+            print(f"  DEBUG: max_jog_speed_per_min = {max_jog_speed_per_min}")
+            print(f"  DEBUG: self.jog_speed = {self.jog_speed}")
+            
+            # Get current slider state before modification
+            old_min = self.w.slider_jog_velocity.minimum()
+            old_max = self.w.slider_jog_velocity.maximum()
+            old_val = self.w.slider_jog_velocity.value()
+            print(f"  DEBUG: Slider BEFORE - min:{old_min}, max:{old_max}, value:{old_val}")
+            
+            # Set new range and value
+            self.w.slider_jog_velocity.setMinimum(10)  # Minimum 10 units/min
+            self.w.slider_jog_velocity.setMaximum(max_jog_speed_per_min)
+            self.w.slider_jog_velocity.setValue(self.jog_speed)
+            
+            # Verify slider state after modification
+            new_min = self.w.slider_jog_velocity.minimum()
+            new_max = self.w.slider_jog_velocity.maximum()
+            new_val = self.w.slider_jog_velocity.value()
+            print(f"  DEBUG: Slider AFTER - min:{new_min}, max:{new_max}, value:{new_val}")
+            
+            print(f"  ✓ Jog velocity slider: {new_min} to {new_max} {self.machine_config['units_label']}/min")
+            print(f"  ✓ Default jog speed: {new_val} {self.machine_config['units_label']}/min")
+            print(f"  ✓ Jog increments available: {self.jog_increments} {self.machine_config['units_label']}")
+            print("✓ Jog controls configured\n")
+            
+        except Exception as e:
+            print(f"⚠ Jog control configuration error: {e}")
+            import traceback
+            traceback.print_exc()
+            print()
+    
+    def setup_spindle_controls_dynamic(self):
+        """
+        Configure spindle controls based on INI max spindle speed.
+        Sets slider range and default value.
+        """
+        print("*** CONFIGURING SPINDLE CONTROLS DYNAMICALLY ***")
+        
+        try:
+            max_spindle = int(self.machine_config.get('max_spindle_speed', 24000))
+            
+            print(f"  DEBUG: max_spindle_speed from config = {max_spindle}")
+            print(f"  DEBUG: self.spindle_speed = {self.spindle_speed}")
+            
+            # Get current slider state
+            old_min = self.w.slider_spindle_speed.minimum()
+            old_max = self.w.slider_spindle_speed.maximum()
+            old_val = self.w.slider_spindle_speed.value()
+            print(f"  DEBUG: Slider BEFORE - min:{old_min}, max:{old_max}, value:{old_val}")
+            
+            # Set new range and value
+            self.w.slider_spindle_speed.setMinimum(0)
+            self.w.slider_spindle_speed.setMaximum(max_spindle)
+            self.w.slider_spindle_speed.setValue(self.spindle_speed)
+            
+            # Verify slider state
+            new_min = self.w.slider_spindle_speed.minimum()
+            new_max = self.w.slider_spindle_speed.maximum()
+            new_val = self.w.slider_spindle_speed.value()
+            print(f"  DEBUG: Slider AFTER - min:{new_min}, max:{new_max}, value:{new_val}")
+            
+            print(f"  ✓ Spindle speed slider: {new_min} to {new_max} RPM")
+            print(f"  ✓ Default spindle speed: {new_val} RPM")
+            print("✓ Spindle controls configured\n")
+            
+        except Exception as e:
+            print(f"⚠ Spindle control configuration error: {e}")
+            import traceback
+            traceback.print_exc()
+            print()
     
     def switch_to_manual(self):
         """Switch to MANUAL mode - Show jog controls + spindle/overrides in right panel"""
@@ -476,7 +800,6 @@ class HandlerClass:
         print("HIDDEN: MDI controls, Auto controls")
         
         # Switch stacked widget to Manual page (index 0)
-        # This automatically shows all manual controls including jog buttons
         self.w.stackedWidget_modes.setCurrentIndex(0)
         
         # Set LinuxCNC to manual mode
@@ -552,105 +875,192 @@ class HandlerClass:
         try:
             self.stat.poll()
             
-            # — ADDED: MAX AXIS VELOCITY CALCULATION —
-            # Get current velocities for all joints
-            max_vel = 0.0
-            try:
-                # Try to get actual_position velocity (derivative)
-                # LinuxCNC stores velocity in machine units per second
-                num_joints = INFO.JOINT_COUNT
-                
-                # Check if current_vel is available (total current velocity)
-                if hasattr(self.stat, 'current_vel'):
-                    # current_vel is in machine units per second
-                    max_vel = abs(self.stat.current_vel)
-                else:
-                    # Fallback: Calculate from joint velocities
-                    if hasattr(self.stat, 'joint_actual_position'):
-                        # We can't directly get velocity from joint_actual_position
-                        # So we'll use a different approach if available
-                        pass
-                
-                # Convert to mm/min or inch/min for display
-                # current_vel is in units/sec, convert to units/min
-                max_vel_per_min = max_vel * 60.0
-                
-                # Update display
-                if self.is_metric:
-                    self.w.dro_velocity.setText(f"{max_vel_per_min:7.3f} mm/min")
-                else:
-                    self.w.dro_velocity.setText(f"{max_vel_per_min:7.3f} in/min")
-                
-            except Exception as e:
-                # If velocity calculation fails, show 0
-                if self.is_metric:
-                    self.w.dro_velocity.setText("  0.000 mm/min")
-                else:
-                    self.w.dro_velocity.setText("  0.000 in/min")
-            # — END ADDED: MAX AXIS VELOCITY CALCULATION —
+            # Update velocity display
+            self.update_velocity_display()
             
-        except:
+            # Update E-stop button appearance
+            if STATUS.estop_is_clear():
+                self.w.btn_estop.setText("E-STOP\nCLEAR")
+                self.w.btn_estop.setStyleSheet("""
+                    QPushButton {
+                        background-color: #27ae60;
+                        color: white;
+                        border: 2px solid #1e8449;
+                        font-weight: bold;
+                        border-radius: 4px;
+                    }
+                """)
+            else:
+                self.w.btn_estop.setText("E-STOP\nACTIVE")
+                self.w.btn_estop.setStyleSheet("""
+                    QPushButton {
+                        background-color: #c0392b;
+                        color: white;
+                        border: 2px solid #943126;
+                        font-weight: bold;
+                        border-radius: 4px;
+                    }
+                """)
+            
+            # Update power button appearance
+            if STATUS.machine_is_on():
+                self.w.btn_power.setText("POWER\nON")
+                self.w.btn_power.setStyleSheet("""
+                    QPushButton {
+                        background-color: #27ae60;
+                        color: white;
+                        border: 2px solid #1e8449;
+                        font-weight: bold;
+                        border-radius: 4px;
+                    }
+                """)
+            else:
+                self.w.btn_power.setText("POWER\nOFF")
+                self.w.btn_power.setStyleSheet("""
+                    QPushButton {
+                        background-color: #7f8c8d;
+                        color: white;
+                        border: 2px solid #5d6d7e;
+                        font-weight: bold;
+                        border-radius: 4px;
+                    }
+                """)
+            
+            # Update program line highlight in AUTO mode
+            if self.current_mode == "AUTO" and self.loaded_program_lines:
+                current_line = self.stat.motion_line
+                if current_line != self.last_highlighted_line:
+                    self.highlight_gcode_line(current_line)
+                    self.last_highlighted_line = current_line
+            
+        except Exception as e:
             pass
     
+    def update_velocity_display(self):
+        """Update velocity display in DRO - called every 100ms from periodic_update"""
+        try:
+            # Check if dro_velocity widget exists in UI
+            if not hasattr(self.w, 'dro_velocity'):
+                return
+            
+            # Get current actual velocity from LinuxCNC stat
+            # stat.current_vel = magnitude of velocity vector (units/sec)
+            # This is actual machine velocity, not commanded velocity
+            velocity = 0.0
+            
+            if hasattr(self.stat, 'current_vel'):
+                # Preferred: LinuxCNC provides computed velocity magnitude
+                velocity = self.stat.current_vel
+            else:
+                # Fallback: compute magnitude from joint velocities
+                # stat.joint_velocity = array of joint velocities (units/sec)
+                if hasattr(self.stat, 'joint_velocity') and self.stat.joint_velocity:
+                    import math
+                    # Velocity magnitude: sqrt(vx² + vy² + vz² + ...)
+                    sum_squares = sum(v * v for v in self.stat.joint_velocity)
+                    velocity = math.sqrt(sum_squares)
+            
+            # Convert units/sec → units/min for display
+            velocity_per_min = abs(velocity * 60.0)
+            
+            # Get units label from machine config (mm or in)
+            units_label = self.machine_config.get('units_label', 'mm')
+            
+            # Update DRO velocity widget
+            self.w.dro_velocity.setText(f"Vel: {velocity_per_min:.1f} {units_label}/min")
+            
+        except Exception:
+            # Graceful fallback on any error - display zero velocity
+            try:
+                if hasattr(self.w, 'dro_velocity'):
+                    units_label = self.machine_config.get('units_label', 'mm')
+                    self.w.dro_velocity.setText(f"Vel: 0.0 {units_label}/min")
+            except:
+                pass  # Silent fail - don't crash periodic_update
+    
     def is_auto_running(self):
-        """Check if auto mode program is running"""
+        """Check if auto mode is running"""
         try:
             self.stat.poll()
-            return (self.stat.task_mode == linuxcnc.MODE_AUTO and 
-                    self.stat.interp_state != linuxcnc.INTERP_IDLE)
+            return self.stat.task_mode == linuxcnc.MODE_AUTO and (
+                self.stat.interp_state == linuxcnc.INTERP_READING or
+                self.stat.interp_state == linuxcnc.INTERP_WAITING
+            )
         except:
             return False
     
-    def load_program(self):
-        """Load G-code program"""
-        if not STATUS.machine_is_on():
-            print("ERROR: Power OFF!")
+    def execute_mdi(self):
+        """Execute MDI command"""
+        if self.current_mode != "MDI":
             return
         
-        # Check if homed
-        self.stat.poll()
-        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
-        if not all_homed:
-            print("\n" + "="*50)
-            print("⚠ WARNING: NOT ALL AXES HOMED!")
-            print("Running programs without homing may cause issues")
-            print("Recommendation: Click HOME ALL first")
-            print("="*50 + "\n")
+        command = self.w.text_mdi_input.text().strip()
+        if not command:
+            return
         
-        options = QFileDialog.Options()
+        print(f"Executing MDI: {command}")
+        
+        try:
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete()
+            self.command.mdi(command)
+            
+            # Add to history
+            self.w.text_mdi_history.append(f"> {command}")
+            self.w.text_mdi_input.clear()
+            
+        except Exception as e:
+            print(f"MDI error: {e}")
+            self.w.text_mdi_history.append(f"ERROR: {e}")
+    
+    def clear_mdi(self):
+        """Clear MDI history"""
+        self.w.text_mdi_history.clear()
+        print("MDI history cleared")
+    
+    def load_program(self):
+        """Load G-code program"""
         file_path, _ = QFileDialog.getOpenFileName(
-            None,
-            "Select G-code Program",
+            self.w,
+            "Load G-Code Program",
             os.path.expanduser("~"),
-            "G-code Files (*.ngc *.nc *.gcode);;All Files (*)",
-            options=options
+            "G-Code Files (*.ngc *.nc *.tap);;All Files (*.*)"
         )
         
-        if file_path:
-            try:
-                # Load the program
-                self.command.mode(linuxcnc.MODE_AUTO)
-                self.command.wait_complete()
-                ACTION.OPEN_PROGRAM(file_path)
-                
-                # Read and display preview
-                with open(file_path, 'r') as f:
-                    lines = f.readlines()
-                    self.loaded_program_lines = lines
-                    preview_text = ''.join(lines[:50])  # Show first 50 lines
-                    if len(lines) > 50:
-                        preview_text += f"\n... ({len(lines)} total lines)"
-                    self.w.text_program_preview.setPlainText(preview_text)
-                
-                self.loaded_program_path = file_path
+        if not file_path:
+            return
+        
+        print(f"\n*** LOADING PROGRAM ***")
+        print(f"File: {file_path}")
+        
+        try:
+            # Load file into LinuxCNC
+            self.command.mode(linuxcnc.MODE_AUTO)
+            self.command.wait_complete()
+            self.command.program_open(file_path)
+            
+            # Store path
+            self.loaded_program_path = file_path
+            
+            # Read and display program
+            with open(file_path, 'r') as f:
+                self.loaded_program_lines = f.readlines()
+            
+            self.w.text_gcode_preview.clear()
+            for i, line in enumerate(self.loaded_program_lines, 1):
+                self.w.text_gcode_preview.append(f"{i:4d} | {line.rstrip()}")
+            
+            # Update loaded filename label if it exists
+            if hasattr(self.w, 'label_11'):
                 self.w.label_11.setText(f"Loaded: {os.path.basename(file_path)}")
-                print(f"\n✓ Program loaded: {file_path}")
-                print(f"  Total lines: {len(lines)}")
-                print(f"  Ready to run - Click CYCLE START")
-                print("="*50 + "\n")
-                
-            except Exception as e:
-                print(f"ERROR loading program: {e}")
+            
+            print(f"✓ Program loaded: {len(self.loaded_program_lines)} lines")
+            print("="*25 + "\n")
+            
+        except Exception as e:
+            print(f"Load error: {e}")
+            self.loaded_program_path = None
+            self.loaded_program_lines = []
     
     def cycle_start(self):
         """Start program execution"""
@@ -662,147 +1072,76 @@ class HandlerClass:
             print("ERROR: Power OFF!")
             return
         
-        # Check if homed
-        self.stat.poll()
-        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
-        if not all_homed:
-            print("\n" + "="*50)
-            print("⚠ WARNING: NOT ALL AXES HOMED!")
-            print("Program execution may fail")
-            print("Recommendation: Click HOME ALL first")
-            print("="*50 + "\n")
-        
+        print("\n*** CYCLE START ***")
         try:
-            print("\n*** CYCLE START ***")
-            print(f"Running: {os.path.basename(self.loaded_program_path)}")
-            print("="*50)
-            
             self.command.mode(linuxcnc.MODE_AUTO)
             self.command.wait_complete()
             self.command.auto(linuxcnc.AUTO_RUN, 0)
-            
             print("✓ Program started")
-            
         except Exception as e:
-            print(f"ERROR: {e}")
+            print(f"Start error: {e}")
     
     def pause_program(self):
         """Pause program execution"""
+        print("Program PAUSED")
         try:
             self.command.auto(linuxcnc.AUTO_PAUSE)
-            print("Program PAUSED")
         except Exception as e:
             print(f"Pause error: {e}")
     
     def stop_program(self):
         """Stop program execution"""
+        print("Program STOPPED")
         try:
             self.command.abort()
-            print("Program STOPPED")
         except Exception as e:
             print(f"Stop error: {e}")
     
-    def execute_mdi(self):
-        """Execute MDI command"""
-        if not STATUS.machine_is_on():
-            print("ERROR: Power is OFF!")
-            print("Click POWER ON first")
+    def highlight_gcode_line(self, line_number):
+        """Highlight current G-code line"""
+        if line_number < 0 or line_number >= len(self.loaded_program_lines):
             return
         
-        # Check if homed
-        self.stat.poll()
-        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
-        if not all_homed:
-            print("\n" + "="*50)
-            print("⚠ WARNING: NOT ALL AXES HOMED!")
-            print("MDI commands may be rejected by LinuxCNC")
-            print("Recommendation: Click HOME ALL first")
-            print("="*50 + "\n")
+        cursor = self.w.text_gcode_preview.textCursor()
+        cursor.movePosition(QTextCursor.Start)
+        cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_number)
         
-        gcode_command = self.w.text_mdi_input.text().strip()
+        # Clear previous highlight
+        self.w.text_gcode_preview.setExtraSelections([])
         
-        if not gcode_command:
-            print("ERROR: No command entered!")
-            return
+        # Set new highlight
+        selection = QTextCursor(cursor)
+        selection.select(QTextCursor.LineUnderCursor)
         
-        print("\n" + "="*50)
-        print(f"EXECUTING MDI: {gcode_command}")
-        print("="*50)
+        fmt = QTextCharFormat()
+        fmt.setBackground(QColor("#3498db"))
+        fmt.setForeground(QColor("white"))
         
-        try:
-            # Ensure we're in MDI mode
-            self.command.mode(linuxcnc.MODE_MDI)
-            self.command.wait_complete(1.0)
-            
-            # Poll to confirm mode
-            self.stat.poll()
-            if self.stat.task_mode != linuxcnc.MODE_MDI:
-                print("✗ ERROR: Failed to enter MDI mode!")
-                print(f"Current mode: {self.stat.task_mode}")
-                print("="*50 + "\n")
-                return
-            
-            # Execute command
-            self.command.mdi(gcode_command)
-            
-            # Wait for interpreter to start
-            time.sleep(0.1)
-            
-            # Check for immediate errors
-            self.stat.poll()
-            if self.stat.interp_state == linuxcnc.INTERP_IDLE:
-                error = self.command.error()
-                if error and error[0]:
-                    print(f"✗ LinuxCNC ERROR: {error}")
-                    print("Common causes:")
-                    print("  - Axes not homed")
-                    print("  - Command exceeds soft limits")
-                    print("  - Invalid G-code syntax")
-                    print("="*50 + "\n")
-                    return
-            
-            # Add to history
-            current = self.w.text_mdi_history.toPlainText()
-            if current:
-                self.w.text_mdi_history.setPlainText(current + "\n" + gcode_command)
-            else:
-                self.w.text_mdi_history.setPlainText(gcode_command)
-            
-            # Scroll to bottom
-            scrollbar = self.w.text_mdi_history.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
-            
-            # Clear input
-            self.w.text_mdi_input.clear()
-            
-            print("✓ Command executed successfully")
-            print("="*50 + "\n")
-            
-        except Exception as e:
-            print(f"✗ MDI ERROR: {e}")
-            print("="*50 + "\n")
+        extra_selection = type('obj', (object,), {
+            'cursor': selection,
+            'format': fmt
+        })()
+        
+        self.w.text_gcode_preview.setExtraSelections([extra_selection])
     
-    def clear_mdi(self):
-        """Clear MDI history"""
-        self.w.text_mdi_history.clear()
-        self.w.text_mdi_input.clear()
-        print("MDI history cleared")
-    
-    def set_jog_increment(self, increment):
-        """Set jog increment"""
-        if increment == "continuous":
+    def set_jog_increment(self, value):
+        """Set jog increment mode"""
+        if value == "continuous":
             self.jog_mode = "continuous"
-            self.jog_increment = 0
-            print("Jog: CONTINUOUS")
+            print(f"Jog mode: CONTINUOUS")
         else:
             self.jog_mode = "increment"
-            self.jog_increment = increment
-            print(f"Jog: {increment} mm")
+            self.jog_increment = value
+            print(f"Jog mode: INCREMENT {value} {self.machine_config['units_label']}")
     
     def update_jog_velocity(self, value):
         """Update jog velocity"""
         self.jog_speed = value
-        self.w.label_jog_2.setText(f"Jog Velocity: {value}mm/min")
+        # Update jog velocity label if it exists
+        if hasattr(self.w, 'label_jog_2'):
+            self.w.label_jog_2.setText(f"Jog Velocity: {value}{self.machine_config['units_label']}/min")
+        elif hasattr(self.w, 'label_jog_velocity'):
+            self.w.label_jog_velocity.setText(f"Jog: {value} {self.machine_config['units_label']}/min")
     
     def toggle_estop(self):
         """Toggle E-stop"""
@@ -840,23 +1179,23 @@ class HandlerClass:
             self.command.mode(linuxcnc.MODE_MANUAL)
             self.command.wait_complete()
             
-            num_joints = INFO.JOINT_COUNT
-            for joint_num in range(num_joints):
+            # Unhome all joints first
+            for joint_num in range(self.machine_config['joint_count']):
                 if self.stat.homed[joint_num] == 1:
                     self.command.unhome(joint_num)
             
             self.command.wait_complete()
             
-            for joint_num in range(num_joints):
+            # Home all joints
+            for joint_num in range(self.machine_config['joint_count']):
                 self.command.home(joint_num)
             
-            print("✓ Homing complete - DRO shows 0.000")
-            print("All axes (X, Y, Z) are now homed")
+            print(f"✓ Homing complete for {self.machine_config['joint_count']} joints")
+            print(f"Axes: {' '.join(self.machine_config['axes'])}")
         except Exception as e:
             print(f"Homing error: {e}")
         print("="*25 + "\n")
     
-    # — ADDED FOR AXIS HOMING BUTTONS —
     def home_x_axis(self):
         """Home X axis using dynamically assigned joint"""
         if not STATUS.estop_is_clear():
@@ -940,9 +1279,7 @@ class HandlerClass:
         except Exception as e:
             print(f"Z axis homing error: {e}")
         print("="*25 + "\n")
-    # — END ADDED FOR AXIS HOMING BUTTONS —
     
-    # — ADDED: DYNAMIC HOME BUTTON BINDING —
     def open_joint_assignment_dialog(self):
         """Open dialog to reassign joints to home buttons"""
         # Get current mappings
@@ -952,8 +1289,8 @@ class HandlerClass:
             'z': self.home_z_joint
         }
         
-        # Get joint count from INFO
-        joint_count = INFO.JOINT_COUNT
+        # Get joint count from machine config
+        joint_count = self.machine_config['joint_count']
         
         # Create and show dialog
         dialog = JointAssignmentDialog(self.w, current_mappings, joint_count)
@@ -972,20 +1309,72 @@ class HandlerClass:
                 print(f"HOME Y → Joint {self.home_y_joint}")
                 print(f"HOME Z → Joint {self.home_z_joint}")
                 print("="*35 + "\n")
+                
+                # Reconnect jog buttons with new joint assignments
+                self.reconnect_jog_buttons()
         else:
             print("Joint assignment cancelled")
-    # — END ADDED: DYNAMIC HOME BUTTON BINDING —
+    
+    def reconnect_jog_buttons(self):
+        """Reconnect jog buttons after joint reassignment"""
+        print("Reconnecting jog buttons to new joint assignments...")
+        
+        # Disconnect old connections (if possible - PyQt doesn't easily support this)
+        # Instead, we'll rely on the lambda capturing the current joint values
+        
+        # Reconnect with new joint assignments
+        self.w.btn_jog_xplus.pressed.disconnect()
+        self.w.btn_jog_xplus.released.disconnect()
+        self.w.btn_jog_xminus.pressed.disconnect()
+        self.w.btn_jog_xminus.released.disconnect()
+        
+        self.w.btn_jog_yplus.pressed.disconnect()
+        self.w.btn_jog_yplus.released.disconnect()
+        self.w.btn_jog_yminus.pressed.disconnect()
+        self.w.btn_jog_yminus.released.disconnect()
+        
+        self.w.btn_jog_zplus.pressed.disconnect()
+        self.w.btn_jog_zplus.released.disconnect()
+        self.w.btn_jog_zminus.pressed.disconnect()
+        self.w.btn_jog_zminus.released.disconnect()
+        
+        # Reconnect with new mappings
+        self.w.btn_jog_xplus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, 1))
+        self.w.btn_jog_xplus.released.connect(lambda: self.jog_stop(self.home_x_joint))
+        self.w.btn_jog_xminus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, -1))
+        self.w.btn_jog_xminus.released.connect(lambda: self.jog_stop(self.home_x_joint))
+        
+        self.w.btn_jog_yplus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, 1))
+        self.w.btn_jog_yplus.released.connect(lambda: self.jog_stop(self.home_y_joint))
+        self.w.btn_jog_yminus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, -1))
+        self.w.btn_jog_yminus.released.connect(lambda: self.jog_stop(self.home_y_joint))
+        
+        self.w.btn_jog_zplus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, 1))
+        self.w.btn_jog_zplus.released.connect(lambda: self.jog_stop(self.home_z_joint))
+        self.w.btn_jog_zminus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, -1))
+        self.w.btn_jog_zminus.released.connect(lambda: self.jog_stop(self.home_z_joint))
+        
+        print("✓ Jog buttons reconnected")
     
     def jog_joint(self, joint_num, direction):
-        """Start jogging"""
+        """Start jogging - uses machine-specific velocity limits"""
         if self.current_mode != "MANUAL":
             return
         
         if not STATUS.machine_is_on() or not STATUS.estop_is_clear():
             return
         
-        # Convert mm/min to mm/sec for LinuxCNC
+        # Get max velocity for this specific joint (safety check)
+        if joint_num < len(self.machine_config['joint_max_velocities']):
+            joint_max_vel = self.machine_config['joint_max_velocities'][joint_num]
+        else:
+            joint_max_vel = self.max_velocity
+        
+        # Convert jog speed from units/min to units/sec
         speed_per_sec = self.jog_speed / 60.0
+        
+        # Clamp to joint's max velocity
+        speed_per_sec = min(speed_per_sec, joint_max_vel)
         
         if self.jog_mode == "continuous":
             ACTION.JOG(joint_num, direction, speed_per_sec)
