@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 QtVCP Panel Handler - Mode-Based Visibility Control
-Version: 7.0 - FULLY INI-DRIVEN MACHINE CONFIGURATION
-All machine-specific parameters now loaded from active INI file
+Version: 6.2 - ADDED MAX AXIS VELOCITY DISPLAY IN DRO
 """
 
 from PyQt5.QtCore import Qt, QTimer, QObject, QEvent
-from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton
+from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QMenu, QTableWidgetItem, QMessageBox, QAbstractItemView
 from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor, QKeySequence
 from qtvcp.core import Status, Action, Info
 import linuxcnc
@@ -237,17 +236,13 @@ class HandlerClass:
         self.command = linuxcnc.command()
         self.stat = linuxcnc.stat()
         
-        # Machine configuration - loaded from INI
-        self.machine_config = {}
-        
-        # Jog settings - will be populated from INI
-        self.jog_speed = 500  # Temporary default, overridden by load_machine_configuration
-        self.jog_increment = 10.0  # Temporary default
+        # Jog settings
+        self.jog_speed = 500  # mm/min
+        self.jog_increment = 10.0
         self.jog_mode = "increment"
-        self.jog_increments = []  # Will be populated based on units
         
-        # Spindle settings - will be populated from INI
-        self.spindle_speed = 1000  # Temporary default
+        # Spindle settings
+        self.spindle_speed = 1000
         
         # Current mode
         self.current_mode = "MANUAL"
@@ -258,266 +253,73 @@ class HandlerClass:
         self.auto_feedrate_override = 100
         self.last_highlighted_line = -1
         
-        # Joint to axis mapping - will be populated from INI
-        self.home_x_joint = 0  # Temporary default
-        self.home_y_joint = 1  # Temporary default
-        self.home_z_joint = 2  # Temporary default
-        self.axis_to_joint_map = {}  # Maps 'X' -> joint_num, 'Y' -> joint_num, etc.
+        # — ADDED: DYNAMIC HOME BUTTON BINDING —
+        # Default joint to axis mapping
+        self.home_x_joint = 0
+        self.home_y_joint = 1
+        self.home_z_joint = 2
+        # — END ADDED: DYNAMIC HOME BUTTON BINDING —
         
-        # Axis velocity tracking
+        # — ADDED: MAX AXIS VELOCITY TRACKING —
         self.max_velocity = 0.0
-        self.is_metric = True  # Will be determined from INI
+        self.is_metric = True  # Default to metric
+        # — END ADDED: MAX AXIS VELOCITY TRACKING —
         
-        # Load all machine configuration from INI file
-        self.load_machine_configuration()
-        
-    def load_machine_configuration(self):
-        """
-        Load all machine-specific configuration from active INI file.
-        This makes the handler completely machine-independent.
-        """
-        print("\n" + "="*60)
-        print("LOADING MACHINE CONFIGURATION FROM INI")
-        print("="*60)
-        
-        try:
-            # ═══════════════════════════════════════════════════════════
-            # 1. DETECT LINEAR UNITS (metric vs imperial)
-            # ═══════════════════════════════════════════════════════════
-            try:
-                # Read from INFO object (preferred method)
-                linear_units = INFO.LINEAR_UNITS
-                if linear_units:
-                    if 'mm' in linear_units.lower():
-                        self.is_metric = True
-                        self.machine_config['units'] = 'metric'
-                        self.machine_config['units_label'] = 'mm'
-                    elif 'inch' in linear_units.lower() or 'in' in linear_units.lower():
-                        self.is_metric = False
-                        self.machine_config['units'] = 'imperial'
-                        self.machine_config['units_label'] = 'in'
-                    else:
-                        # Fallback to INI file parsing
-                        ini = linuxcnc.ini(INFO.INI_FILE)
-                        traj_units = ini.find('TRAJ', 'LINEAR_UNITS')
-                        if traj_units and 'mm' in traj_units.lower():
-                            self.is_metric = True
-                            self.machine_config['units'] = 'metric'
-                            self.machine_config['units_label'] = 'mm'
-                        else:
-                            self.is_metric = False
-                            self.machine_config['units'] = 'imperial'
-                            self.machine_config['units_label'] = 'in'
-                else:
-                    # Default fallback
-                    self.is_metric = True
-                    self.machine_config['units'] = 'metric'
-                    self.machine_config['units_label'] = 'mm'
-            except Exception as e:
-                print(f"  ⚠ Units detection error: {e}, defaulting to metric")
-                self.is_metric = True
-                self.machine_config['units'] = 'metric'
-                self.machine_config['units_label'] = 'mm'
-            
-            print(f"✓ Linear Units: {self.machine_config['units']} ({self.machine_config['units_label']})")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 2. DETECT JOINT COUNT
-            # ═══════════════════════════════════════════════════════════
-            try:
-                joint_count = INFO.JOINT_COUNT
-                self.machine_config['joint_count'] = joint_count
-            except Exception as e:
-                print(f"  ⚠ Joint count error: {e}, defaulting to 3")
-                self.machine_config['joint_count'] = 3
-            
-            print(f"✓ Joint Count: {self.machine_config['joint_count']}")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 3. DETECT AXIS LETTERS FROM COORDINATES
-            # ═══════════════════════════════════════════════════════════
-            try:
-                # Read COORDINATES from [TRAJ] section
-                coordinates = INFO.COORDINATES
-                if coordinates:
-                    # Parse coordinates string (e.g., "XYZ", "XYZA", "XYZAB")
-                    self.machine_config['axes'] = list(coordinates.upper())
-                else:
-                    # Fallback: try reading directly from INI
-                    ini = linuxcnc.ini(INFO.INI_FILE)
-                    coords = ini.find('TRAJ', 'COORDINATES')
-                    if coords:
-                        self.machine_config['axes'] = list(coords.upper())
-                    else:
-                        # Ultimate fallback
-                        self.machine_config['axes'] = ['X', 'Y', 'Z']
-            except Exception as e:
-                print(f"  ⚠ Axis detection error: {e}, defaulting to XYZ")
-                self.machine_config['axes'] = ['X', 'Y', 'Z']
-            
-            print(f"✓ Axes: {' '.join(self.machine_config['axes'])}")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 4. BUILD AXIS-TO-JOINT MAPPING
-            # ═══════════════════════════════════════════════════════════
-            # Assume trivial kinematics: axis index = joint index
-            for idx, axis_letter in enumerate(self.machine_config['axes']):
-                if idx < self.machine_config['joint_count']:
-                    self.axis_to_joint_map[axis_letter] = idx
-            
-            print(f"✓ Axis-to-Joint Map: {self.axis_to_joint_map}")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 5. SET DEFAULT HOME JOINT ASSIGNMENTS
-            # ═══════════════════════════════════════════════════════════
-            # Home buttons are labeled X, Y, Z
-            # Map them to corresponding joints based on axis configuration
-            self.home_x_joint = self.axis_to_joint_map.get('X', 0)
-            self.home_y_joint = self.axis_to_joint_map.get('Y', 1)
-            self.home_z_joint = self.axis_to_joint_map.get('Z', 2)
-            
-            print(f"✓ Home Button Mapping: X→Joint{self.home_x_joint}, Y→Joint{self.home_y_joint}, Z→Joint{self.home_z_joint}")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 6. LOAD JOINT MAX VELOCITIES
-            # ═══════════════════════════════════════════════════════════
-            try:
-                ini = linuxcnc.ini(INFO.INI_FILE)
-                joint_velocities = []
-                
-                for joint_num in range(self.machine_config['joint_count']):
-                    try:
-                        max_vel = ini.find(f'JOINT_{joint_num}', 'MAX_VELOCITY')
-                        if max_vel:
-                            joint_velocities.append(float(max_vel))
-                        else:
-                            joint_velocities.append(25.0)  # Fallback
-                    except:
-                        joint_velocities.append(25.0)  # Fallback
-                
-                self.machine_config['joint_max_velocities'] = joint_velocities
-                
-                # Find global maximum velocity for jog speed limits
-                if joint_velocities:
-                    self.max_velocity = min(joint_velocities)  # Use minimum to stay safe
-                else:
-                    self.max_velocity = 25.0
-                
-            except Exception as e:
-                print(f"  ⚠ Velocity detection error: {e}, using defaults")
-                self.machine_config['joint_max_velocities'] = [25.0] * self.machine_config['joint_count']
-                self.max_velocity = 25.0
-            
-            print(f"✓ Joint Max Velocities: {self.machine_config['joint_max_velocities']}")
-            print(f"✓ Global Max Velocity (for jog): {self.max_velocity} {self.machine_config['units_label']}/s")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 7. SET DEFAULT JOG SPEED (20% of max velocity)
-            # ═══════════════════════════════════════════════════════════
-            # Convert to mm/min or in/min for display
-            self.jog_speed = int(self.max_velocity * 60.0 * 0.20)  # 20% of max, converted to per-minute
-            print(f"✓ Default Jog Speed: {self.jog_speed} {self.machine_config['units_label']}/min (20% of max)")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 8. GENERATE JOG INCREMENTS BASED ON UNITS
-            # ═══════════════════════════════════════════════════════════
-            if self.is_metric:
-                # Metric increments: 10mm, 1mm, 0.1mm, 0.01mm
-                self.jog_increments = [10.0, 1.0, 0.1, 0.01]
-                self.jog_increment = 10.0  # Default
-            else:
-                # Imperial increments: 1in, 0.1in, 0.01in, 0.001in
-                self.jog_increments = [1.0, 0.1, 0.01, 0.001]
-                self.jog_increment = 0.1  # Default
-            
-            self.machine_config['jog_increments'] = self.jog_increments
-            print(f"✓ Jog Increments: {self.jog_increments} {self.machine_config['units_label']}")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 9. LOAD SPINDLE CONFIGURATION
-            # ═══════════════════════════════════════════════════════════
-            try:
-                ini = linuxcnc.ini(INFO.INI_FILE)
-                
-                # Try to read MAX_FORWARD_VELOCITY from [SPINDLE_0]
-                max_spindle = ini.find('SPINDLE_0', 'MAX_FORWARD_VELOCITY')
-                if max_spindle:
-                    self.machine_config['max_spindle_speed'] = float(max_spindle)
-                else:
-                    # Fallback: try old-style [DISPLAY]
-                    max_spindle = ini.find('DISPLAY', 'MAX_SPINDLE_SPEED')
-                    if max_spindle:
-                        self.machine_config['max_spindle_speed'] = float(max_spindle)
-                    else:
-                        self.machine_config['max_spindle_speed'] = 24000.0  # Default
-                
-                # Set default spindle speed to 20% of max
-                self.spindle_speed = int(self.machine_config['max_spindle_speed'] * 0.20)
-                
-            except Exception as e:
-                print(f"  ⚠ Spindle detection error: {e}, using defaults")
-                self.machine_config['max_spindle_speed'] = 24000.0
-                self.spindle_speed = 1000
-            
-            print(f"✓ Max Spindle Speed: {self.machine_config['max_spindle_speed']} RPM")
-            print(f"✓ Default Spindle Speed: {self.spindle_speed} RPM (20% of max)")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 10. LOAD DEFAULT LINEAR VELOCITY FROM [TRAJ]
-            # ═══════════════════════════════════════════════════════════
-            try:
-                ini = linuxcnc.ini(INFO.INI_FILE)
-                default_vel = ini.find('TRAJ', 'DEFAULT_LINEAR_VELOCITY')
-                if default_vel:
-                    self.machine_config['default_linear_velocity'] = float(default_vel)
-                else:
-                    self.machine_config['default_linear_velocity'] = 5.0
-            except:
-                self.machine_config['default_linear_velocity'] = 5.0
-            
-            print(f"✓ Default Linear Velocity: {self.machine_config['default_linear_velocity']} {self.machine_config['units_label']}/s")
-            
-            print("="*60)
-            print("MACHINE CONFIGURATION LOADED SUCCESSFULLY")
-            print("="*60 + "\n")
-            
-        except Exception as e:
-            print(f"⚠ CRITICAL ERROR loading machine configuration: {e}")
-            print("Using fallback defaults")
-            # Set safe fallback values
-            self.machine_config = {
-                'joint_count': 3,
-                'axes': ['X', 'Y', 'Z'],
-                'units': 'metric',
-                'units_label': 'mm',
-                'joint_max_velocities': [25.0, 25.0, 20.0],
-                'max_spindle_speed': 24000.0,
-                'jog_increments': [10.0, 1.0, 0.1, 0.01],
-                'default_linear_velocity': 5.0
-            }
-            self.is_metric = True
-            self.max_velocity = 25.0
-            self.jog_speed = 300
-            self.spindle_speed = 1000
-            self.jog_increments = [10.0, 1.0, 0.1, 0.01]
-            self.jog_increment = 10.0
-            print("="*60 + "\n")
+        # — ADDED: TOOL MANAGEMENT STATE —
+        self.tool_panel_visible = False
+        self.tool_file_path = None        # Resolved at init from INI
+        self.tool_table_modified = False  # Track unsaved edits
+        # — END ADDED: TOOL MANAGEMENT STATE —
         
     def initialized__(self):
         """Called after widgets are initialized"""
         print("="*50)
         print("QtVCP Panel - Mode-Based Visibility Control")
-        print("Version 7.0 - FULLY INI-DRIVEN CONFIGURATION")
+        print("Version 6.2 - MAX AXIS VELOCITY DISPLAY")
         print("="*50)
         
-        # Configure DRO dynamically based on detected axes
-        self.setup_dro_dynamic()
+        # Configure DRO
+        self.setup_dro()
         
-        # Configure jog controls dynamically
-        self.setup_jog_controls_dynamic()
+        # — ADDED: GCODE GRAPHICS VERIFICATION —
+        # GCodeGraphics widget (gcode_viewer) auto-connects to STATUS in QtVCP
+        # Verify it exists and will function correctly
+        try:
+            if hasattr(self.w, 'gcode_viewer'):
+                print("✓ GCode Graphics viewer ready")
+                # QtVCP GCodeGraphics widgets automatically:
+                # - Display loaded programs
+                # - Follow machine position
+                # - Update during jogging/execution
+                # No manual setup needed
+        except Exception as e:
+            print(f"GCode Graphics note: {e}")
+        # — END ADDED: GCODE GRAPHICS VERIFICATION —
         
-        # Configure spindle controls dynamically
-        self.setup_spindle_controls_dynamic()
+        # — ADDED: DRO VISIBILITY FIX —
+        # Ensure DRO GroupBox appears on top of GCodeGraphics viewer
+        try:
+            if hasattr(self.w, 'groupBox_dro'):
+                self.w.groupBox_dro.raise_()
+                print("✓ DRO display raised to top layer")
+        except Exception as e:
+            print(f"DRO raise note: {e}")
+        # — END ADDED: DRO VISIBILITY FIX —
+        
+        # — ADDED: DETECT MACHINE UNITS —
+        # Check if machine is configured for metric or imperial
+        try:
+            linear_units = INFO.LINEAR_UNITS
+            if linear_units and 'mm' in linear_units.lower():
+                self.is_metric = True
+            elif linear_units and ('inch' in linear_units.lower() or 'in' in linear_units.lower()):
+                self.is_metric = False
+            else:
+                # Fallback: check from INI file
+                self.is_metric = True  # Default
+        except:
+            self.is_metric = True  # Default to metric
+        # — END ADDED: DETECT MACHINE UNITS —
         
         # Setup mode button group
         self.mode_group = QButtonGroup()
@@ -543,15 +345,47 @@ class HandlerClass:
         # Connect machine control buttons
         self.w.btn_estop.clicked.connect(self.toggle_estop)
         self.w.btn_power.clicked.connect(self.toggle_power)
-        self.w.btn_home_all.clicked.connect(self.home_all)
         
+        # — MODIFIED: HOME BUTTON WITH DROPDOWN MENU —
+        # Create dropdown menu for HOME button
+        self.home_menu = QMenu(self.w)
+        self.home_menu.setStyleSheet("""
+            QMenu {
+                background-color: #2c3e50;
+                color: white;
+                border: 2px solid #1c5980;
+                font-weight: bold;
+                font-size: 11pt;
+            }
+            QMenu::item {
+                padding: 8px 30px;
+                background-color: transparent;
+            }
+            QMenu::item:selected {
+                background-color: #3498db;
+            }
+        """)
+        
+        # Add menu actions
+        action_home_all = self.home_menu.addAction("Home All")
+        action_home_x = self.home_menu.addAction("Home X")
+        action_home_y = self.home_menu.addAction("Home Y")
+        action_home_z = self.home_menu.addAction("Home Z")
+        
+        # Connect menu actions to functions
+        action_home_all.triggered.connect(self.home_all)
+        action_home_x.triggered.connect(self.home_x_axis)
+        action_home_y.triggered.connect(self.home_y_axis)
+        action_home_z.triggered.connect(self.home_z_axis)
+        
+        # Set menu to HOME button
+        self.w.btn_home.setMenu(self.home_menu)
+        # — END MODIFIED: HOME BUTTON WITH DROPDOWN MENU —
+        
+        # — ADDED: JOINT SELECT BUTTON —
         # Connect joint assignment dialog button
         self.w.btn_joint_select.clicked.connect(self.open_joint_assignment_dialog)
-        
-        # Connect individual axis homing buttons
-        self.w.btn_home_x.clicked.connect(self.home_x_axis)
-        self.w.btn_home_y.clicked.connect(self.home_y_axis)
-        self.w.btn_home_z.clicked.connect(self.home_z_axis)
+        # — END ADDED: JOINT SELECT BUTTON —
         
         # Connect MDI controls
         self.w.btn_mdi_execute.clicked.connect(self.execute_mdi)
@@ -564,32 +398,31 @@ class HandlerClass:
         self.w.btn_pause.clicked.connect(self.pause_program)
         self.w.btn_stop.clicked.connect(self.stop_program)
         
-        # Connect jog increment buttons - use dynamic increments
+        # Connect jog increment buttons
         self.w.btn_jog_continuous.clicked.connect(lambda: self.set_jog_increment("continuous"))
-        if len(self.jog_increments) >= 4:
-            self.w.btn_jog_10mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[0]))
-            self.w.btn_jog_1mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[1]))
-            self.w.btn_jog_0_1mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[2]))
-            self.w.btn_jog_0_01mm.clicked.connect(lambda: self.set_jog_increment(self.jog_increments[3]))
+        self.w.btn_jog_10mm.clicked.connect(lambda: self.set_jog_increment(10.0))
+        self.w.btn_jog_1mm.clicked.connect(lambda: self.set_jog_increment(1.0))
+        self.w.btn_jog_0_1mm.clicked.connect(lambda: self.set_jog_increment(0.1))
+        self.w.btn_jog_0_01mm.clicked.connect(lambda: self.set_jog_increment(0.01))
         
         # Connect jog velocity slider
         self.w.slider_jog_velocity.valueChanged.connect(self.update_jog_velocity)
         
-        # Connect jog buttons - use mapped joints
-        self.w.btn_jog_xplus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, 1))
-        self.w.btn_jog_xplus.released.connect(lambda: self.jog_stop(self.home_x_joint))
-        self.w.btn_jog_xminus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, -1))
-        self.w.btn_jog_xminus.released.connect(lambda: self.jog_stop(self.home_x_joint))
+        # Connect jog buttons
+        self.w.btn_jog_xplus.pressed.connect(lambda: self.jog_joint(0, 1))
+        self.w.btn_jog_xplus.released.connect(lambda: self.jog_stop(0))
+        self.w.btn_jog_xminus.pressed.connect(lambda: self.jog_joint(0, -1))
+        self.w.btn_jog_xminus.released.connect(lambda: self.jog_stop(0))
         
-        self.w.btn_jog_yplus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, 1))
-        self.w.btn_jog_yplus.released.connect(lambda: self.jog_stop(self.home_y_joint))
-        self.w.btn_jog_yminus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, -1))
-        self.w.btn_jog_yminus.released.connect(lambda: self.jog_stop(self.home_y_joint))
+        self.w.btn_jog_yplus.pressed.connect(lambda: self.jog_joint(1, 1))
+        self.w.btn_jog_yplus.released.connect(lambda: self.jog_stop(1))
+        self.w.btn_jog_yminus.pressed.connect(lambda: self.jog_joint(1, -1))
+        self.w.btn_jog_yminus.released.connect(lambda: self.jog_stop(1))
         
-        self.w.btn_jog_zplus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, 1))
-        self.w.btn_jog_zplus.released.connect(lambda: self.jog_stop(self.home_z_joint))
-        self.w.btn_jog_zminus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, -1))
-        self.w.btn_jog_zminus.released.connect(lambda: self.jog_stop(self.home_z_joint))
+        self.w.btn_jog_zplus.pressed.connect(lambda: self.jog_joint(2, 1))
+        self.w.btn_jog_zplus.released.connect(lambda: self.jog_stop(2))
+        self.w.btn_jog_zminus.pressed.connect(lambda: self.jog_joint(2, -1))
+        self.w.btn_jog_zminus.released.connect(lambda: self.jog_stop(2))
         
         # Connect spindle controls
         self.w.slider_spindle_speed.valueChanged.connect(self.update_spindle_speed_display)
@@ -601,10 +434,9 @@ class HandlerClass:
         self.w.slider_feedrate.valueChanged.connect(self.update_feedrate_override)
         self.w.slider_rapidrate.valueChanged.connect(self.update_rapid_override)
         
-        # Initialize displays - use our INI-configured values
-        # The sliders were already set correctly in setup_*_controls_dynamic()
-        self.update_spindle_speed_display(self.spindle_speed)
-        self.update_jog_velocity(self.jog_speed)
+        # Initialize displays
+        self.update_spindle_speed_display(self.w.slider_spindle_speed.value())
+        self.update_jog_velocity(self.w.slider_jog_velocity.value())
         
         # Start in MANUAL mode - show manual controls, hide MDI and Auto
         self.w.stackedWidget_modes.setCurrentIndex(0)  # Show page_manual
@@ -615,19 +447,28 @@ class HandlerClass:
         self.timer.timeout.connect(self.periodic_update)
         self.timer.start(100)  # 100ms update rate
         
-        # Setup keyboard shortcuts that trigger jog button signals
+        # — ADDED: TOOL MANAGEMENT SETUP —
+        self.setup_tool_management()
+        # — END ADDED: TOOL MANAGEMENT SETUP —
+        
+        # — ADDED: ARROW KEY TO JOG BUTTON MIRROR —
+        # Create keyboard shortcuts that trigger existing jog button signals
+        # Right Arrow → X+ button
         self.shortcut_x_plus = QShortcut(QKeySequence(Qt.Key_Right), self.w)
         self.shortcut_x_plus.activated.connect(lambda: self.w.btn_jog_xplus.pressed.emit())
         self.shortcut_x_plus.setAutoRepeat(False)
         
+        # Left Arrow → X- button
         self.shortcut_x_minus = QShortcut(QKeySequence(Qt.Key_Left), self.w)
         self.shortcut_x_minus.activated.connect(lambda: self.w.btn_jog_xminus.pressed.emit())
         self.shortcut_x_minus.setAutoRepeat(False)
         
+        # Up Arrow → Y+ button
         self.shortcut_y_plus = QShortcut(QKeySequence(Qt.Key_Up), self.w)
         self.shortcut_y_plus.activated.connect(lambda: self.w.btn_jog_yplus.pressed.emit())
         self.shortcut_y_plus.setAutoRepeat(False)
         
+        # Down Arrow → Y- button
         self.shortcut_y_minus = QShortcut(QKeySequence(Qt.Key_Down), self.w)
         self.shortcut_y_minus.activated.connect(lambda: self.w.btn_jog_yminus.pressed.emit())
         self.shortcut_y_minus.setAutoRepeat(False)
@@ -635,6 +476,7 @@ class HandlerClass:
         # Install key release filter for jog stop
         self.key_release_filter = KeyReleaseFilter(self)
         self.w.installEventFilter(self.key_release_filter)
+        # — END ADDED: ARROW KEY TO JOG BUTTON MIRROR —
         
         print("\n*** STARTUP SEQUENCE ***")
         print("1. Click E-STOP to clear")
@@ -655,136 +497,33 @@ class HandlerClass:
         print("  ↑ (Up) = Y+     |  ↓ (Down) = Y-")
         print("="*50 + "\n")
     
-    def setup_dro_dynamic(self):
-        """
-        Configure DRO displays dynamically based on machine axes.
-        Works for 3-axis, 4-axis, 5+ axis systems.
-        """
-        print("\n*** CONFIGURING DRO DYNAMICALLY ***")
-        
+    def setup_dro(self):
+        """Configure DRO displays with axis labels"""
         try:
-            # Map of DRO widget names to axis letters
-            dro_widgets = {
-                'X': 'dro_x',
-                'Y': 'dro_y',
-                'Z': 'dro_z',
-                'A': 'dro_a',  # If exists in UI
-                'B': 'dro_b',  # If exists in UI
-            }
+            # X axis
+            self.w.dro_x.setProperty('joint_number', 0)
+            self.w.dro_x.setProperty('Qjoint_number', 0)
+            self.w.dro_x.setProperty('reference_type', 0)
+            self.w.dro_x.setProperty('metric_units', True)
+            self.w.dro_x.setProperty('mm_text_template', 'X: %10.3f')
             
-            # Configure each axis that exists in machine config
-            for axis_letter in self.machine_config['axes']:
-                widget_name = dro_widgets.get(axis_letter)
-                
-                if widget_name and hasattr(self.w, widget_name):
-                    widget = getattr(self.w, widget_name)
-                    joint_num = self.axis_to_joint_map.get(axis_letter, 0)
-                    
-                    # Set joint number
-                    widget.setProperty('joint_number', joint_num)
-                    widget.setProperty('Qjoint_number', joint_num)
-                    widget.setProperty('reference_type', 0)
-                    
-                    # Set units and template based on metric/imperial
-                    if self.is_metric:
-                        widget.setProperty('metric_units', True)
-                        widget.setProperty('mm_text_template', f'{axis_letter}: %10.3f')
-                    else:
-                        widget.setProperty('metric_units', False)
-                        widget.setProperty('imperial_units', True)
-                        widget.setProperty('inch_text_template', f'{axis_letter}: %10.4f')
-                    
-                    print(f"  ✓ DRO {axis_letter} configured: Joint {joint_num}, Units: {self.machine_config['units_label']}")
+            # Y axis
+            self.w.dro_y.setProperty('joint_number', 1)
+            self.w.dro_y.setProperty('Qjoint_number', 1)
+            self.w.dro_y.setProperty('reference_type', 0)
+            self.w.dro_y.setProperty('metric_units', True)
+            self.w.dro_y.setProperty('mm_text_template', 'Y: %10.3f')
             
-            print("✓ DRO configuration complete\n")
+            # Z axis
+            self.w.dro_z.setProperty('joint_number', 2)
+            self.w.dro_z.setProperty('Qjoint_number', 2)
+            self.w.dro_z.setProperty('reference_type', 0)
+            self.w.dro_z.setProperty('metric_units', True)
+            self.w.dro_z.setProperty('mm_text_template', 'Z: %10.3f')
             
+            print("✓ DRO configured (X, Y, Z) - compact overlay at top-left with axis labels")
         except Exception as e:
-            print(f"⚠ DRO configuration error: {e}")
-            print("  Using fallback static configuration\n")
-    
-    def setup_jog_controls_dynamic(self):
-        """
-        Configure jog controls based on machine limits and units.
-        Sets appropriate slider ranges and default values.
-        """
-        print("*** CONFIGURING JOG CONTROLS DYNAMICALLY ***")
-        
-        try:
-            # Set jog velocity slider range based on max velocity
-            # Range: 0 to max_velocity (in units/sec), converted to units/min for display
-            max_jog_speed_per_min = int(self.max_velocity * 60.0)
-            
-            print(f"  DEBUG: max_velocity = {self.max_velocity} {self.machine_config['units_label']}/s")
-            print(f"  DEBUG: max_jog_speed_per_min = {max_jog_speed_per_min}")
-            print(f"  DEBUG: self.jog_speed = {self.jog_speed}")
-            
-            # Get current slider state before modification
-            old_min = self.w.slider_jog_velocity.minimum()
-            old_max = self.w.slider_jog_velocity.maximum()
-            old_val = self.w.slider_jog_velocity.value()
-            print(f"  DEBUG: Slider BEFORE - min:{old_min}, max:{old_max}, value:{old_val}")
-            
-            # Set new range and value
-            self.w.slider_jog_velocity.setMinimum(10)  # Minimum 10 units/min
-            self.w.slider_jog_velocity.setMaximum(max_jog_speed_per_min)
-            self.w.slider_jog_velocity.setValue(self.jog_speed)
-            
-            # Verify slider state after modification
-            new_min = self.w.slider_jog_velocity.minimum()
-            new_max = self.w.slider_jog_velocity.maximum()
-            new_val = self.w.slider_jog_velocity.value()
-            print(f"  DEBUG: Slider AFTER - min:{new_min}, max:{new_max}, value:{new_val}")
-            
-            print(f"  ✓ Jog velocity slider: {new_min} to {new_max} {self.machine_config['units_label']}/min")
-            print(f"  ✓ Default jog speed: {new_val} {self.machine_config['units_label']}/min")
-            print(f"  ✓ Jog increments available: {self.jog_increments} {self.machine_config['units_label']}")
-            print("✓ Jog controls configured\n")
-            
-        except Exception as e:
-            print(f"⚠ Jog control configuration error: {e}")
-            import traceback
-            traceback.print_exc()
-            print()
-    
-    def setup_spindle_controls_dynamic(self):
-        """
-        Configure spindle controls based on INI max spindle speed.
-        Sets slider range and default value.
-        """
-        print("*** CONFIGURING SPINDLE CONTROLS DYNAMICALLY ***")
-        
-        try:
-            max_spindle = int(self.machine_config.get('max_spindle_speed', 24000))
-            
-            print(f"  DEBUG: max_spindle_speed from config = {max_spindle}")
-            print(f"  DEBUG: self.spindle_speed = {self.spindle_speed}")
-            
-            # Get current slider state
-            old_min = self.w.slider_spindle_speed.minimum()
-            old_max = self.w.slider_spindle_speed.maximum()
-            old_val = self.w.slider_spindle_speed.value()
-            print(f"  DEBUG: Slider BEFORE - min:{old_min}, max:{old_max}, value:{old_val}")
-            
-            # Set new range and value
-            self.w.slider_spindle_speed.setMinimum(0)
-            self.w.slider_spindle_speed.setMaximum(max_spindle)
-            self.w.slider_spindle_speed.setValue(self.spindle_speed)
-            
-            # Verify slider state
-            new_min = self.w.slider_spindle_speed.minimum()
-            new_max = self.w.slider_spindle_speed.maximum()
-            new_val = self.w.slider_spindle_speed.value()
-            print(f"  DEBUG: Slider AFTER - min:{new_min}, max:{new_max}, value:{new_val}")
-            
-            print(f"  ✓ Spindle speed slider: {new_min} to {new_max} RPM")
-            print(f"  ✓ Default spindle speed: {new_val} RPM")
-            print("✓ Spindle controls configured\n")
-            
-        except Exception as e:
-            print(f"⚠ Spindle control configuration error: {e}")
-            import traceback
-            traceback.print_exc()
-            print()
+            print(f"DRO note: {e}")
     
     def switch_to_manual(self):
         """Switch to MANUAL mode - Show jog controls + spindle/overrides in right panel"""
@@ -800,6 +539,7 @@ class HandlerClass:
         print("HIDDEN: MDI controls, Auto controls")
         
         # Switch stacked widget to Manual page (index 0)
+        # This automatically shows all manual controls including jog buttons
         self.w.stackedWidget_modes.setCurrentIndex(0)
         
         # Set LinuxCNC to manual mode
@@ -875,192 +615,112 @@ class HandlerClass:
         try:
             self.stat.poll()
             
-            # Update velocity display
-            self.update_velocity_display()
-            
-            # Update E-stop button appearance
-            if STATUS.estop_is_clear():
-                self.w.btn_estop.setText("E-STOP\nCLEAR")
-                self.w.btn_estop.setStyleSheet("""
-                    QPushButton {
-                        background-color: #27ae60;
-                        color: white;
-                        border: 2px solid #1e8449;
-                        font-weight: bold;
-                        border-radius: 4px;
-                    }
-                """)
-            else:
-                self.w.btn_estop.setText("E-STOP\nACTIVE")
-                self.w.btn_estop.setStyleSheet("""
-                    QPushButton {
-                        background-color: #c0392b;
-                        color: white;
-                        border: 2px solid #943126;
-                        font-weight: bold;
-                        border-radius: 4px;
-                    }
-                """)
-            
-            # Update power button appearance
-            if STATUS.machine_is_on():
-                self.w.btn_power.setText("POWER\nON")
-                self.w.btn_power.setStyleSheet("""
-                    QPushButton {
-                        background-color: #27ae60;
-                        color: white;
-                        border: 2px solid #1e8449;
-                        font-weight: bold;
-                        border-radius: 4px;
-                    }
-                """)
-            else:
-                self.w.btn_power.setText("POWER\nOFF")
-                self.w.btn_power.setStyleSheet("""
-                    QPushButton {
-                        background-color: #7f8c8d;
-                        color: white;
-                        border: 2px solid #5d6d7e;
-                        font-weight: bold;
-                        border-radius: 4px;
-                    }
-                """)
-            
-            # Update program line highlight in AUTO mode
-            if self.current_mode == "AUTO" and self.loaded_program_lines:
-                current_line = self.stat.motion_line
-                if current_line != self.last_highlighted_line:
-                    self.highlight_gcode_line(current_line)
-                    self.last_highlighted_line = current_line
-            
-        except Exception as e:
-            pass
-    
-    def update_velocity_display(self):
-        """Update velocity display in DRO - called every 100ms from periodic_update"""
-        try:
-            # Check if dro_velocity widget exists in UI
-            if not hasattr(self.w, 'dro_velocity'):
-                return
-            
-            # Get current actual velocity from LinuxCNC stat
-            # stat.current_vel = magnitude of velocity vector (units/sec)
-            # This is actual machine velocity, not commanded velocity
-            velocity = 0.0
-            
-            if hasattr(self.stat, 'current_vel'):
-                # Preferred: LinuxCNC provides computed velocity magnitude
-                velocity = self.stat.current_vel
-            else:
-                # Fallback: compute magnitude from joint velocities
-                # stat.joint_velocity = array of joint velocities (units/sec)
-                if hasattr(self.stat, 'joint_velocity') and self.stat.joint_velocity:
-                    import math
-                    # Velocity magnitude: sqrt(vx² + vy² + vz² + ...)
-                    sum_squares = sum(v * v for v in self.stat.joint_velocity)
-                    velocity = math.sqrt(sum_squares)
-            
-            # Convert units/sec → units/min for display
-            velocity_per_min = abs(velocity * 60.0)
-            
-            # Get units label from machine config (mm or in)
-            units_label = self.machine_config.get('units_label', 'mm')
-            
-            # Update DRO velocity widget
-            self.w.dro_velocity.setText(f"Vel: {velocity_per_min:.1f} {units_label}/min")
-            
-        except Exception:
-            # Graceful fallback on any error - display zero velocity
+            # — ADDED: MAX AXIS VELOCITY CALCULATION —
+            # Get current velocities for all joints
+            max_vel = 0.0
             try:
-                if hasattr(self.w, 'dro_velocity'):
-                    units_label = self.machine_config.get('units_label', 'mm')
-                    self.w.dro_velocity.setText(f"Vel: 0.0 {units_label}/min")
-            except:
-                pass  # Silent fail - don't crash periodic_update
+                # Try to get actual_position velocity (derivative)
+                # LinuxCNC stores velocity in machine units per second
+                num_joints = INFO.JOINT_COUNT
+                
+                # Check if current_vel is available (total current velocity)
+                if hasattr(self.stat, 'current_vel'):
+                    # current_vel is in machine units per second
+                    max_vel = abs(self.stat.current_vel)
+                else:
+                    # Fallback: Calculate from joint velocities
+                    if hasattr(self.stat, 'joint_actual_position'):
+                        # We can't directly get velocity from joint_actual_position
+                        # So we'll use a different approach if available
+                        pass
+                
+                # Convert to mm/min or inch/min for display
+                # current_vel is in units/sec, convert to units/min
+                max_vel_per_min = max_vel * 60.0
+                
+                # Update display
+                if self.is_metric:
+                    self.w.dro_velocity.setText(f"{max_vel_per_min:7.3f} mm/min")
+                else:
+                    self.w.dro_velocity.setText(f"{max_vel_per_min:7.3f} in/min")
+                
+            except Exception as e:
+                # If velocity calculation fails, show 0
+                if self.is_metric:
+                    self.w.dro_velocity.setText("  0.000 mm/min")
+                else:
+                    self.w.dro_velocity.setText("  0.000 in/min")
+            # — END ADDED: MAX AXIS VELOCITY CALCULATION —
+            
+        except:
+            pass
+        # — ADDED: keep tool status bar in sync with controller ——————————
+        try:
+            if self.tool_panel_visible:
+                self._update_tool_status_bar()
+        except Exception:
+            pass
+        # — END ADDED ——————————————————————————————————————————————————————
     
     def is_auto_running(self):
-        """Check if auto mode is running"""
+        """Check if auto mode program is running"""
         try:
             self.stat.poll()
-            return self.stat.task_mode == linuxcnc.MODE_AUTO and (
-                self.stat.interp_state == linuxcnc.INTERP_READING or
-                self.stat.interp_state == linuxcnc.INTERP_WAITING
-            )
+            return (self.stat.task_mode == linuxcnc.MODE_AUTO and 
+                    self.stat.interp_state != linuxcnc.INTERP_IDLE)
         except:
             return False
     
-    def execute_mdi(self):
-        """Execute MDI command"""
-        if self.current_mode != "MDI":
-            return
-        
-        command = self.w.text_mdi_input.text().strip()
-        if not command:
-            return
-        
-        print(f"Executing MDI: {command}")
-        
-        try:
-            self.command.mode(linuxcnc.MODE_MDI)
-            self.command.wait_complete()
-            self.command.mdi(command)
-            
-            # Add to history
-            self.w.text_mdi_history.append(f"> {command}")
-            self.w.text_mdi_input.clear()
-            
-        except Exception as e:
-            print(f"MDI error: {e}")
-            self.w.text_mdi_history.append(f"ERROR: {e}")
-    
-    def clear_mdi(self):
-        """Clear MDI history"""
-        self.w.text_mdi_history.clear()
-        print("MDI history cleared")
-    
     def load_program(self):
         """Load G-code program"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.w,
-            "Load G-Code Program",
-            os.path.expanduser("~"),
-            "G-Code Files (*.ngc *.nc *.tap);;All Files (*.*)"
-        )
-        
-        if not file_path:
+        if not STATUS.machine_is_on():
+            print("ERROR: Power OFF!")
             return
         
-        print(f"\n*** LOADING PROGRAM ***")
-        print(f"File: {file_path}")
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("Running programs without homing may cause issues")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
         
-        try:
-            # Load file into LinuxCNC
-            self.command.mode(linuxcnc.MODE_AUTO)
-            self.command.wait_complete()
-            self.command.program_open(file_path)
-            
-            # Store path
-            self.loaded_program_path = file_path
-            
-            # Read and display program
-            with open(file_path, 'r') as f:
-                self.loaded_program_lines = f.readlines()
-            
-            self.w.text_gcode_preview.clear()
-            for i, line in enumerate(self.loaded_program_lines, 1):
-                self.w.text_gcode_preview.append(f"{i:4d} | {line.rstrip()}")
-            
-            # Update loaded filename label if it exists
-            if hasattr(self.w, 'label_11'):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select G-code Program",
+            os.path.expanduser("~"),
+            "G-code Files (*.ngc *.nc *.gcode);;All Files (*)",
+            options=options
+        )
+        
+        if file_path:
+            try:
+                # Load the program
+                self.command.mode(linuxcnc.MODE_AUTO)
+                self.command.wait_complete()
+                ACTION.OPEN_PROGRAM(file_path)
+                
+                # Read and display preview
+                with open(file_path, 'r') as f:
+                    lines = f.readlines()
+                    self.loaded_program_lines = lines
+                    preview_text = ''.join(lines[:50])  # Show first 50 lines
+                    if len(lines) > 50:
+                        preview_text += f"\n... ({len(lines)} total lines)"
+                    self.w.text_program_preview.setPlainText(preview_text)
+                
+                self.loaded_program_path = file_path
                 self.w.label_11.setText(f"Loaded: {os.path.basename(file_path)}")
-            
-            print(f"✓ Program loaded: {len(self.loaded_program_lines)} lines")
-            print("="*25 + "\n")
-            
-        except Exception as e:
-            print(f"Load error: {e}")
-            self.loaded_program_path = None
-            self.loaded_program_lines = []
+                print(f"\n✓ Program loaded: {file_path}")
+                print(f"  Total lines: {len(lines)}")
+                print(f"  Ready to run - Click CYCLE START")
+                print("="*50 + "\n")
+                
+            except Exception as e:
+                print(f"ERROR loading program: {e}")
     
     def cycle_start(self):
         """Start program execution"""
@@ -1072,76 +732,147 @@ class HandlerClass:
             print("ERROR: Power OFF!")
             return
         
-        print("\n*** CYCLE START ***")
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("Program execution may fail")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
+        
         try:
+            print("\n*** CYCLE START ***")
+            print(f"Running: {os.path.basename(self.loaded_program_path)}")
+            print("="*50)
+            
             self.command.mode(linuxcnc.MODE_AUTO)
             self.command.wait_complete()
             self.command.auto(linuxcnc.AUTO_RUN, 0)
+            
             print("✓ Program started")
+            
         except Exception as e:
-            print(f"Start error: {e}")
+            print(f"ERROR: {e}")
     
     def pause_program(self):
         """Pause program execution"""
-        print("Program PAUSED")
         try:
             self.command.auto(linuxcnc.AUTO_PAUSE)
+            print("Program PAUSED")
         except Exception as e:
             print(f"Pause error: {e}")
     
     def stop_program(self):
         """Stop program execution"""
-        print("Program STOPPED")
         try:
             self.command.abort()
+            print("Program STOPPED")
         except Exception as e:
             print(f"Stop error: {e}")
     
-    def highlight_gcode_line(self, line_number):
-        """Highlight current G-code line"""
-        if line_number < 0 or line_number >= len(self.loaded_program_lines):
+    def execute_mdi(self):
+        """Execute MDI command"""
+        if not STATUS.machine_is_on():
+            print("ERROR: Power is OFF!")
+            print("Click POWER ON first")
             return
         
-        cursor = self.w.text_gcode_preview.textCursor()
-        cursor.movePosition(QTextCursor.Start)
-        cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_number)
+        # Check if homed
+        self.stat.poll()
+        all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+        if not all_homed:
+            print("\n" + "="*50)
+            print("⚠ WARNING: NOT ALL AXES HOMED!")
+            print("MDI commands may be rejected by LinuxCNC")
+            print("Recommendation: Click HOME ALL first")
+            print("="*50 + "\n")
         
-        # Clear previous highlight
-        self.w.text_gcode_preview.setExtraSelections([])
+        gcode_command = self.w.text_mdi_input.text().strip()
         
-        # Set new highlight
-        selection = QTextCursor(cursor)
-        selection.select(QTextCursor.LineUnderCursor)
+        if not gcode_command:
+            print("ERROR: No command entered!")
+            return
         
-        fmt = QTextCharFormat()
-        fmt.setBackground(QColor("#3498db"))
-        fmt.setForeground(QColor("white"))
+        print("\n" + "="*50)
+        print(f"EXECUTING MDI: {gcode_command}")
+        print("="*50)
         
-        extra_selection = type('obj', (object,), {
-            'cursor': selection,
-            'format': fmt
-        })()
-        
-        self.w.text_gcode_preview.setExtraSelections([extra_selection])
+        try:
+            # Ensure we're in MDI mode
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete(1.0)
+            
+            # Poll to confirm mode
+            self.stat.poll()
+            if self.stat.task_mode != linuxcnc.MODE_MDI:
+                print("✗ ERROR: Failed to enter MDI mode!")
+                print(f"Current mode: {self.stat.task_mode}")
+                print("="*50 + "\n")
+                return
+            
+            # Execute command
+            self.command.mdi(gcode_command)
+            
+            # Wait for interpreter to start
+            time.sleep(0.1)
+            
+            # Check for immediate errors
+            self.stat.poll()
+            if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                error = self.command.error()
+                if error and error[0]:
+                    print(f"✗ LinuxCNC ERROR: {error}")
+                    print("Common causes:")
+                    print("  - Axes not homed")
+                    print("  - Command exceeds soft limits")
+                    print("  - Invalid G-code syntax")
+                    print("="*50 + "\n")
+                    return
+            
+            # Add to history
+            current = self.w.text_mdi_history.toPlainText()
+            if current:
+                self.w.text_mdi_history.setPlainText(current + "\n" + gcode_command)
+            else:
+                self.w.text_mdi_history.setPlainText(gcode_command)
+            
+            # Scroll to bottom
+            scrollbar = self.w.text_mdi_history.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+            
+            # Clear input
+            self.w.text_mdi_input.clear()
+            
+            print("✓ Command executed successfully")
+            print("="*50 + "\n")
+            
+        except Exception as e:
+            print(f"✗ MDI ERROR: {e}")
+            print("="*50 + "\n")
     
-    def set_jog_increment(self, value):
-        """Set jog increment mode"""
-        if value == "continuous":
+    def clear_mdi(self):
+        """Clear MDI history"""
+        self.w.text_mdi_history.clear()
+        self.w.text_mdi_input.clear()
+        print("MDI history cleared")
+    
+    def set_jog_increment(self, increment):
+        """Set jog increment"""
+        if increment == "continuous":
             self.jog_mode = "continuous"
-            print(f"Jog mode: CONTINUOUS")
+            self.jog_increment = 0
+            print("Jog: CONTINUOUS")
         else:
             self.jog_mode = "increment"
-            self.jog_increment = value
-            print(f"Jog mode: INCREMENT {value} {self.machine_config['units_label']}")
+            self.jog_increment = increment
+            print(f"Jog: {increment} mm")
     
     def update_jog_velocity(self, value):
         """Update jog velocity"""
         self.jog_speed = value
-        # Update jog velocity label if it exists
-        if hasattr(self.w, 'label_jog_2'):
-            self.w.label_jog_2.setText(f"Jog Velocity: {value}{self.machine_config['units_label']}/min")
-        elif hasattr(self.w, 'label_jog_velocity'):
-            self.w.label_jog_velocity.setText(f"Jog: {value} {self.machine_config['units_label']}/min")
+        self.w.label_jog_2.setText(f"Jog Velocity: {value}mm/min")
     
     def toggle_estop(self):
         """Toggle E-stop"""
@@ -1179,23 +910,23 @@ class HandlerClass:
             self.command.mode(linuxcnc.MODE_MANUAL)
             self.command.wait_complete()
             
-            # Unhome all joints first
-            for joint_num in range(self.machine_config['joint_count']):
+            num_joints = INFO.JOINT_COUNT
+            for joint_num in range(num_joints):
                 if self.stat.homed[joint_num] == 1:
                     self.command.unhome(joint_num)
             
             self.command.wait_complete()
             
-            # Home all joints
-            for joint_num in range(self.machine_config['joint_count']):
+            for joint_num in range(num_joints):
                 self.command.home(joint_num)
             
-            print(f"✓ Homing complete for {self.machine_config['joint_count']} joints")
-            print(f"Axes: {' '.join(self.machine_config['axes'])}")
+            print("✓ Homing complete - DRO shows 0.000")
+            print("All axes (X, Y, Z) are now homed")
         except Exception as e:
             print(f"Homing error: {e}")
         print("="*25 + "\n")
     
+    # — ADDED FOR AXIS HOMING BUTTONS —
     def home_x_axis(self):
         """Home X axis using dynamically assigned joint"""
         if not STATUS.estop_is_clear():
@@ -1279,7 +1010,9 @@ class HandlerClass:
         except Exception as e:
             print(f"Z axis homing error: {e}")
         print("="*25 + "\n")
+    # — END ADDED FOR AXIS HOMING BUTTONS —
     
+    # — ADDED: DYNAMIC HOME BUTTON BINDING —
     def open_joint_assignment_dialog(self):
         """Open dialog to reassign joints to home buttons"""
         # Get current mappings
@@ -1289,8 +1022,8 @@ class HandlerClass:
             'z': self.home_z_joint
         }
         
-        # Get joint count from machine config
-        joint_count = self.machine_config['joint_count']
+        # Get joint count from INFO
+        joint_count = INFO.JOINT_COUNT
         
         # Create and show dialog
         dialog = JointAssignmentDialog(self.w, current_mappings, joint_count)
@@ -1309,72 +1042,20 @@ class HandlerClass:
                 print(f"HOME Y → Joint {self.home_y_joint}")
                 print(f"HOME Z → Joint {self.home_z_joint}")
                 print("="*35 + "\n")
-                
-                # Reconnect jog buttons with new joint assignments
-                self.reconnect_jog_buttons()
         else:
             print("Joint assignment cancelled")
-    
-    def reconnect_jog_buttons(self):
-        """Reconnect jog buttons after joint reassignment"""
-        print("Reconnecting jog buttons to new joint assignments...")
-        
-        # Disconnect old connections (if possible - PyQt doesn't easily support this)
-        # Instead, we'll rely on the lambda capturing the current joint values
-        
-        # Reconnect with new joint assignments
-        self.w.btn_jog_xplus.pressed.disconnect()
-        self.w.btn_jog_xplus.released.disconnect()
-        self.w.btn_jog_xminus.pressed.disconnect()
-        self.w.btn_jog_xminus.released.disconnect()
-        
-        self.w.btn_jog_yplus.pressed.disconnect()
-        self.w.btn_jog_yplus.released.disconnect()
-        self.w.btn_jog_yminus.pressed.disconnect()
-        self.w.btn_jog_yminus.released.disconnect()
-        
-        self.w.btn_jog_zplus.pressed.disconnect()
-        self.w.btn_jog_zplus.released.disconnect()
-        self.w.btn_jog_zminus.pressed.disconnect()
-        self.w.btn_jog_zminus.released.disconnect()
-        
-        # Reconnect with new mappings
-        self.w.btn_jog_xplus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, 1))
-        self.w.btn_jog_xplus.released.connect(lambda: self.jog_stop(self.home_x_joint))
-        self.w.btn_jog_xminus.pressed.connect(lambda: self.jog_joint(self.home_x_joint, -1))
-        self.w.btn_jog_xminus.released.connect(lambda: self.jog_stop(self.home_x_joint))
-        
-        self.w.btn_jog_yplus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, 1))
-        self.w.btn_jog_yplus.released.connect(lambda: self.jog_stop(self.home_y_joint))
-        self.w.btn_jog_yminus.pressed.connect(lambda: self.jog_joint(self.home_y_joint, -1))
-        self.w.btn_jog_yminus.released.connect(lambda: self.jog_stop(self.home_y_joint))
-        
-        self.w.btn_jog_zplus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, 1))
-        self.w.btn_jog_zplus.released.connect(lambda: self.jog_stop(self.home_z_joint))
-        self.w.btn_jog_zminus.pressed.connect(lambda: self.jog_joint(self.home_z_joint, -1))
-        self.w.btn_jog_zminus.released.connect(lambda: self.jog_stop(self.home_z_joint))
-        
-        print("✓ Jog buttons reconnected")
+    # — END ADDED: DYNAMIC HOME BUTTON BINDING —
     
     def jog_joint(self, joint_num, direction):
-        """Start jogging - uses machine-specific velocity limits"""
+        """Start jogging"""
         if self.current_mode != "MANUAL":
             return
         
         if not STATUS.machine_is_on() or not STATUS.estop_is_clear():
             return
         
-        # Get max velocity for this specific joint (safety check)
-        if joint_num < len(self.machine_config['joint_max_velocities']):
-            joint_max_vel = self.machine_config['joint_max_velocities'][joint_num]
-        else:
-            joint_max_vel = self.max_velocity
-        
-        # Convert jog speed from units/min to units/sec
+        # Convert mm/min to mm/sec for LinuxCNC
         speed_per_sec = self.jog_speed / 60.0
-        
-        # Clamp to joint's max velocity
-        speed_per_sec = min(speed_per_sec, joint_max_vel)
         
         if self.jog_mode == "continuous":
             ACTION.JOG(joint_num, direction, speed_per_sec)
@@ -1419,6 +1100,775 @@ class HandlerClass:
         """Rapid override"""
         self.w.label_rapidrate.setText(f"{value}%")
         ACTION.SET_RAPID_RATE(value / 100.0)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — ADDED: TOOL MANAGEMENT —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def setup_tool_management(self):
+        """
+        Initialize tool management panel.
+        - Resolves tool table file path from INI (never hardcoded).
+        - Connects all tool button signals.
+        - Loads tool table on startup.
+        - Hides panel by default.
+        """
+        print("\n*** TOOL MANAGEMENT INIT ***")
+
+        # ── Resolve tool file path from INI ──────────────────────────────
+        # ROOT CAUSE FIX: INFO.INI_FILENAME can be None at this stage because
+        # the Info() singleton populates lazily in QtVCP. Using it too early
+        # caused linuxcnc.ini(None) to fail silently, leaving tool_file_path=None
+        # and producing an empty table.
+        # SOLUTION: os.environ['INI_FILE_NAME'] is set by LinuxCNC before QtVCP
+        # starts and is ALWAYS reliable. INFO is kept as a secondary fallback.
+        self.tool_file_path = None
+        try:
+            # Primary: environment variable (guaranteed by LinuxCNC runtime)
+            ini_file = os.environ.get('INI_FILE_NAME', '')
+            # Secondary: INFO object (may be populated by this point)
+            if not ini_file:
+                try:
+                    ini_file = INFO.INI_FILENAME or ''
+                except Exception:
+                    ini_file = ''
+
+            if ini_file and os.path.isfile(ini_file):
+                ini_obj = linuxcnc.ini(ini_file)
+                raw_path = ini_obj.find("EMCIO", "TOOL_TABLE") or ""
+                if raw_path:
+                    if os.path.isabs(raw_path):
+                        candidate = raw_path
+                    else:
+                        # Relative path → resolve against INI file directory
+                        ini_dir = os.path.dirname(os.path.abspath(ini_file))
+                        candidate = os.path.join(ini_dir, raw_path)
+                    if os.path.isfile(candidate):
+                        self.tool_file_path = candidate
+                        print(f"✓ Tool table resolved: {self.tool_file_path}")
+                    else:
+                        print(f"⚠ Tool table path not found at: {candidate}")
+                else:
+                    print("⚠ TOOL_TABLE key missing from [EMCIO] in INI")
+            else:
+                print(f"⚠ INI file not accessible: '{ini_file}'")
+        except Exception as e:
+            print(f"Tool table path resolution error: {e}")
+            self.tool_file_path = None
+
+        # ── Configure table widget columns ───────────────────────────────
+        try:
+            tbl = self.w.table_tools
+            tbl.setColumnCount(7)
+            tbl.setHorizontalHeaderLabels(
+                ["T#", "Pocket", "X Off", "Y Off", "Z Off", "Diam", "Comment"]
+            )
+            # Column widths (proportional, total ~474px)
+            for col, w in enumerate([38, 46, 60, 60, 60, 50, 160]):
+                tbl.setColumnWidth(col, w)
+            tbl.horizontalHeader().setStretchLastSection(True)
+            tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
+            tbl.setSelectionMode(QAbstractItemView.SingleSelection)
+            tbl.verticalHeader().setDefaultSectionSize(24)
+            tbl.verticalHeader().hide()
+        except Exception as e:
+            print(f"Table config error: {e}")
+
+        # ── Connect TOOL button signals ───────────────────────────────────
+        try:
+            self.w.btn_tool_mgmt.clicked.connect(self.toggle_tool_panel)
+            self.w.btn_tool_close.clicked.connect(self.hide_tool_panel)
+            self.w.btn_tool_add.clicked.connect(self.tool_add_row)
+            self.w.btn_tool_delete.clicked.connect(self.tool_delete_row)
+            self.w.btn_tool_reload.clicked.connect(self.tool_reload_table)
+            self.w.btn_tool_apply.clicked.connect(self.tool_apply_changes)
+            self.w.btn_tool_select.clicked.connect(self.tool_select)
+            self.w.btn_tool_change.clicked.connect(self.tool_change_m6)
+            self.w.btn_tool_touch_z.clicked.connect(self.tool_touch_off_z)
+            self.w.btn_tool_update_offset.clicked.connect(self.tool_update_z_offset)
+            self.w.btn_tool_load.clicked.connect(self.tool_load)
+            self.w.btn_tool_unload.clicked.connect(self.tool_unload)
+            # Track edits for dirty-flag
+            self.w.table_tools.itemChanged.connect(self._on_tool_table_edited)
+            print("✓ Tool button signals connected")
+        except Exception as e:
+            print(f"Tool signal error: {e}")
+
+        # ── Ensure panel starts hidden ────────────────────────────────────
+        try:
+            self.w.frame_tool_panel.setVisible(False)
+            self.w.btn_tool_mgmt.setChecked(False)
+        except Exception as e:
+            print(f"Tool panel hide error: {e}")
+
+        # ── Load tool table on startup ────────────────────────────────────
+        self.tool_reload_table()
+        print("="*35 + "\n")
+
+    # ────────────────────────────────────────────────────────────────────
+    # Panel Visibility
+    # ────────────────────────────────────────────────────────────────────
+
+    def toggle_tool_panel(self):
+        """Toggle tool management panel visibility"""
+        if self.tool_panel_visible:
+            self.hide_tool_panel()
+        else:
+            self.show_tool_panel()
+
+    def show_tool_panel(self):
+        """Show tool panel, overlay gcode viewer, refresh table"""
+        self.tool_panel_visible = True
+        self.w.frame_tool_panel.setVisible(True)
+        self.w.frame_tool_panel.raise_()
+        self.w.btn_tool_mgmt.setChecked(True)
+        # Refresh status bar and table whenever panel opens
+        self.tool_reload_table()
+        self._update_tool_status_bar()
+        print("Tool Management panel OPEN")
+
+    def hide_tool_panel(self):
+        """Hide tool panel, restore gcode viewer"""
+        # Warn if there are unsaved changes
+        if self.tool_table_modified:
+            reply = QMessageBox.question(
+                self.w,
+                "Unsaved Changes",
+                "Tool table has unsaved changes.\nClose anyway?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return
+        self.tool_panel_visible = False
+        self.w.frame_tool_panel.setVisible(False)
+        self.w.btn_tool_mgmt.setChecked(False)
+        self.tool_table_modified = False
+        print("Tool Management panel CLOSED")
+
+    # ────────────────────────────────────────────────────────────────────
+    # Tool File Parsing
+    # ────────────────────────────────────────────────────────────────────
+
+    def _parse_tool_file(self):
+        """
+        Parse the tool table using a two-source merge strategy:
+
+        SOURCE 1 — linuxcnc.stat().tool_table  (primary, authoritative)
+            Always reflects what the CONTROLLER actually has loaded.
+            Provides: tool id (T#), all offsets (X/Y/Z/D etc.)
+            Does NOT provide: pocket number, comment.
+
+        SOURCE 2 — tool.tbl file on disk  (secondary, metadata)
+            Provides: pocket number, comment (not in stat).
+            May lag stat by one 'Apply Changes' cycle.
+
+        Merge: For every tool in the file, look up its live offset data
+        from stat. Display stat offsets so edits post-G10 are visible
+        immediately without needing a file reload.
+
+        Falls back to file-only parsing if stat is unavailable.
+        """
+        # ── Step 1: Parse file for pocket + comment metadata ─────────────
+        file_tools = {}   # keyed by T number (int)
+        if self.tool_file_path and os.path.isfile(self.tool_file_path):
+            try:
+                with open(self.tool_file_path, 'r') as fh:
+                    for raw_line in fh:
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        comment = ""
+                        if ';' in line:
+                            parts = line.split(';', 1)
+                            line = parts[0].strip()
+                            comment = parts[1].strip()
+                        if not line:
+                            continue
+                        tokens = line.upper().split()
+                        entry = {'T': 0, 'P': 0, 'X': 0.0, 'Y': 0.0,
+                                 'Z': 0.0, 'D': 0.0, 'comment': comment}
+                        for tok in tokens:
+                            for key in ('T', 'P', 'X', 'Y', 'Z', 'D'):
+                                if tok.startswith(key) and len(tok) > len(key):
+                                    try:
+                                        entry[key] = int(tok[len(key):]) if key in ('T', 'P') else float(tok[len(key):])
+                                    except ValueError:
+                                        pass
+                                    break
+                        t_num = entry['T']
+                        if t_num > 0:   # skip T0 (no-tool placeholder)
+                            file_tools[t_num] = entry
+            except Exception as e:
+                print(f"Tool file parse error: {e}")
+
+        # ── Step 2: Read live offsets from stat.tool_table ────────────────
+        # stat.tool_table is a tuple of tool_result objects, one per tool.
+        # Each has: .id, .xoffset, .yoffset, .zoffset, .diameter, .comment
+        # This is what the controller ACTUALLY has — authoritative for offsets.
+        stat_tools = {}   # keyed by T number (int)
+        try:
+            self.stat.poll()
+            for t in self.stat.tool_table:
+                tid = t.id
+                if tid == 0:
+                    continue  # T0 = no tool loaded
+                stat_tools[tid] = {
+                    'T': tid,
+                    'X': t.xoffset,
+                    'Y': t.yoffset,
+                    'Z': t.zoffset,
+                    'D': t.diameter,
+                }
+        except Exception as e:
+            print(f"stat.tool_table read error (using file data only): {e}")
+
+        # ── Step 3: Merge — build final list ─────────────────────────────
+        # Use all tool numbers seen in EITHER source.
+        # Offsets come from stat (live), pocket+comment from file.
+        all_t_nums = sorted(set(list(file_tools.keys()) + list(stat_tools.keys())))
+        merged = []
+        for t_num in all_t_nums:
+            f = file_tools.get(t_num, {})
+            s = stat_tools.get(t_num, {})
+            merged.append({
+                'T':       str(t_num),
+                'P':       str(f.get('P', t_num)),   # pocket from file
+                'X':       f"{s.get('X', f.get('X', 0.0)):.4f}",
+                'Y':       f"{s.get('Y', f.get('Y', 0.0)):.4f}",
+                'Z':       f"{s.get('Z', f.get('Z', 0.0)):.4f}",
+                'D':       f"{s.get('D', f.get('D', 0.0)):.4f}",
+                'comment': f.get('comment', ''),
+            })
+
+        if not merged:
+            print("⚠ No tools found in file or stat. Check tool_file_path and LinuxCNC state.")
+        return merged
+
+    def _write_tool_file(self, tools):
+        """
+        Write edited tool table back to the tool.tbl file.
+
+        Format follows the LinuxCNC standard:
+            T{n} P{p} X{x} Y{y} Z{z} D{d} ;comment
+        All offset fields are written explicitly so LinuxCNC reads them
+        correctly. Pocket must match the T number for random-tool-changer
+        emulators; for fixed-pocket machines it is already correct.
+        After writing, call command.load_tool_table() to push changes
+        into the controller without a restart.
+        """
+        if not self.tool_file_path:
+            print("ERROR: No tool file path set — cannot write")
+            return False
+        try:
+            lines = []
+            for t in tools:
+                try:
+                    tn = int(t.get('T', '0'))
+                    p  = int(t.get('P', '0'))
+                    x  = float(t.get('X', '0.0'))
+                    y  = float(t.get('Y', '0.0'))
+                    z  = float(t.get('Z', '0.0'))
+                    d  = float(t.get('D', '0.0'))
+                    c  = t.get('comment', '').strip()
+                    line = f"T{tn} P{p} X{x:.4f} Y{y:.4f} Z{z:.4f} D{d:.4f}"
+                    if c:
+                        line += f" ;{c}"
+                    lines.append(line)
+                except (ValueError, TypeError) as e:
+                    print(f"Skipping malformed tool row: {t} ({e})")
+            with open(self.tool_file_path, 'w') as fh:
+                fh.write('\n'.join(lines) + '\n')
+            print(f"✓ Wrote {len(lines)} tools to {self.tool_file_path}")
+            return True
+        except Exception as e:
+            print(f"Tool file write error: {e}")
+            return False
+
+    # ────────────────────────────────────────────────────────────────────
+    # Table Population
+    # ────────────────────────────────────────────────────────────────────
+
+    def tool_reload_table(self):
+        """
+        Repopulate QTableWidget from the two-source merge in _parse_tool_file().
+        Offsets come from stat.tool_table (live), pocket/comment from the file.
+        Signals are blocked during population to suppress false dirty-flags.
+        """
+        try:
+            tbl = self.w.table_tools
+            tbl.blockSignals(True)
+            tbl.setRowCount(0)
+            tools = self._parse_tool_file()
+            blue = QColor('#00aaff')
+            for row, t in enumerate(tools):
+                tbl.insertRow(row)
+                vals = [
+                    t.get('T', '0'),       # col 0: T#
+                    t.get('P', '0'),       # col 1: Pocket
+                    t.get('X', '0.0000'),  # col 2: X offset
+                    t.get('Y', '0.0000'),  # col 3: Y offset
+                    t.get('Z', '0.0000'),  # col 4: Z offset
+                    t.get('D', '0.0000'),  # col 5: Diameter
+                    t.get('comment', ''),   # col 6: Comment
+                ]
+                for col, val in enumerate(vals):
+                    item = QTableWidgetItem(str(val))
+                    if col in (0, 1):
+                        # T# and Pocket: coloured for visual distinction
+                        item.setForeground(blue)
+                    tbl.setItem(row, col, item)
+            tbl.blockSignals(False)
+            self.tool_table_modified = False
+            self._update_tool_status_bar()
+            src = "stat+file" if tools else "no data"
+            print(f"✓ Tool table loaded: {len(tools)} tools  [{src}]"
+                  + (f"  path: {self.tool_file_path}" if self.tool_file_path else "  (no path resolved)"))
+        except Exception as e:
+            print(f"Tool reload error: {e}")
+            try:
+                self.w.table_tools.blockSignals(False)
+            except Exception:
+                pass
+
+    def _on_tool_table_edited(self, item):
+        """Called when user edits any table cell — mark as modified"""
+        self.tool_table_modified = True
+
+    def _update_tool_status_bar(self):
+        """
+        Update status bar from stat.tool_table (live controller data).
+        stat.tool_in_spindle gives the active T number.
+        stat.tool_table entries give live offsets for that tool.
+        Pocket and comment are looked up from the file (not in stat).
+        """
+        try:
+            self.stat.poll()
+            tool_num = self.stat.tool_in_spindle   # int, 0 = no tool
+            d_str = "-"
+            z_str = "-"
+            p_str = "-"
+            cmt_str = ""
+
+            # ── Offset data from stat (live, controller-authoritative) ──
+            try:
+                for t in self.stat.tool_table:
+                    if t.id == tool_num and tool_num != 0:
+                        d_str = f"{t.diameter:.4f}"
+                        z_str = f"{t.zoffset:.4f}"
+                        break
+            except Exception:
+                pass
+
+            # ── Pocket + comment from file (metadata not in stat) ──────
+            if self.tool_file_path and os.path.isfile(self.tool_file_path):
+                try:
+                    with open(self.tool_file_path, 'r') as fh:
+                        for line in fh:
+                            line = line.strip()
+                            comment = ""
+                            if ';' in line:
+                                line, comment = line.split(';', 1)
+                                comment = comment.strip()
+                            tokens = line.upper().split()
+                            t_val = p_val = 0
+                            for tok in tokens:
+                                if tok.startswith('T') and len(tok) > 1:
+                                    try: t_val = int(tok[1:])
+                                    except ValueError: pass
+                                elif tok.startswith('P') and len(tok) > 1:
+                                    try: p_val = int(tok[1:])
+                                    except ValueError: pass
+                            if t_val == tool_num and tool_num != 0:
+                                p_str = str(p_val)
+                                cmt_str = comment
+                                break
+                except Exception:
+                    pass
+
+            if tool_num == 0:
+                self.w.lbl_tool_status.setText(
+                    "Active Tool: None  |  No tool in spindle"
+                )
+            else:
+                self.w.lbl_tool_status.setText(
+                    f"Active Tool: T{tool_num}  |  Pocket: {p_str}  |  "
+                    f"Diameter: {d_str}  |  Z Offset: {z_str}"
+                    + (f"  |  {cmt_str}" if cmt_str else "")
+                )
+        except Exception as e:
+            try:
+                self.w.lbl_tool_status.setText("Status unavailable")
+            except Exception:
+                pass
+
+    # ────────────────────────────────────────────────────────────────────
+    # Table Action Handlers
+    # ────────────────────────────────────────────────────────────────────
+
+    def _collect_table_tools(self):
+        """Read all rows from the QTableWidget and return list of dicts"""
+        tbl = self.w.table_tools
+        tools = []
+        for row in range(tbl.rowCount()):
+            def cell(c):
+                item = tbl.item(row, c)
+                return item.text().strip() if item else ''
+            tools.append({
+                'T':       cell(0),
+                'P':       cell(1),
+                'X':       cell(2),
+                'Y':       cell(3),
+                'Z':       cell(4),
+                'D':       cell(5),
+                'comment': cell(6),
+            })
+        return tools
+
+    def tool_add_row(self):
+        """Add a new blank tool row at the bottom of the table"""
+        tbl = self.w.table_tools
+        tbl.blockSignals(True)
+        row = tbl.rowCount()
+        tbl.insertRow(row)
+        # Auto-assign next tool number
+        next_t = row + 1
+        next_p = row + 1
+        defaults = [str(next_t), str(next_p), '0.0', '0.0', '0.0', '0.0', '']
+        for col, val in enumerate(defaults):
+            item = QTableWidgetItem(val)
+            tbl.setItem(row, col, item)
+        tbl.blockSignals(False)
+        tbl.selectRow(row)
+        self.tool_table_modified = True
+        print(f"✓ Tool row added: T{next_t}")
+
+    def tool_delete_row(self):
+        """Delete the currently selected tool row"""
+        tbl = self.w.table_tools
+        row = tbl.currentRow()
+        if row < 0:
+            QMessageBox.warning(self.w, "No Selection", "Select a tool row to delete.")
+            return
+        t_item = tbl.item(row, 0)
+        t_num = t_item.text() if t_item else '?'
+        reply = QMessageBox.question(
+            self.w,
+            "Delete Tool",
+            f"Delete T{t_num} from the table?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            tbl.removeRow(row)
+            self.tool_table_modified = True
+            print(f"✓ Tool T{t_num} deleted")
+
+    def tool_apply_changes(self):
+        """
+        Write edited tool table back to file and reload LinuxCNC tool data.
+        This calls 'G10 L1' reload sequence via the load_tool_table command.
+        """
+        tools = self._collect_table_tools()
+        if not tools:
+            QMessageBox.warning(self.w, "Empty Table", "No tools to save.")
+            return
+        # Validate: tool numbers must be integers
+        for t in tools:
+            try:
+                int(t['T'])
+                int(t['P'])
+            except ValueError:
+                QMessageBox.critical(
+                    self.w,
+                    "Invalid Data",
+                    f"Tool# and Pocket must be integers. Check row T{t['T']}."
+                )
+                return
+        if self._write_tool_file(tools):
+            # ── Push updated file into LinuxCNC controller ────────────────
+            # command.load_tool_table() reads the file we just wrote and
+            # updates the controller's internal tool data without a restart.
+            # stat.tool_table will reflect the new values on next poll.
+            reload_ok = False
+            try:
+                self.command.load_tool_table()
+                reload_ok = True
+                print("✓ LinuxCNC tool table reloaded via command.load_tool_table()")
+            except AttributeError:
+                # Older LinuxCNC versions may not have load_tool_table()
+                print("⚠ command.load_tool_table() not available — trying MDI fallback")
+                try:
+                    if STATUS.machine_is_on():
+                        self.command.mode(linuxcnc.MODE_MDI)
+                        self.command.wait_complete()
+                        # G10 L1 P0 triggers a tool table reload in the interpreter
+                        self.command.mdi("G10 L1 P0")
+                        self.command.wait_complete()
+                        self.command.mode(linuxcnc.MODE_MANUAL)
+                        reload_ok = True
+                        print("✓ Tool table reloaded via G10 L1 P0 MDI fallback")
+                except Exception as mdi_e:
+                    print(f"MDI fallback error: {mdi_e}")
+            except Exception as e:
+                print(f"load_tool_table() error: {e}")
+
+            self.tool_table_modified = False
+            # Give controller one cycle to process the reload before repopulating
+            QTimer.singleShot(200, self.tool_reload_table)
+            self._update_tool_status_bar()
+            msg = "Tool table saved and reloaded." if reload_ok else \
+                  "Tool table saved. Reload into controller may be incomplete."
+            QMessageBox.information(self.w, "Saved", msg)
+            print("✓ Tool table apply complete")
+        else:
+            QMessageBox.critical(self.w, "Save Error", "Could not write tool table file.")
+
+    # ────────────────────────────────────────────────────────────────────
+    # Tool Control Handlers
+    # ────────────────────────────────────────────────────────────────────
+
+    def _get_selected_tool_num(self):
+        """Return tool number (int) of currently selected table row, or None"""
+        tbl = self.w.table_tools
+        row = tbl.currentRow()
+        if row < 0:
+            return None
+        item = tbl.item(row, 0)
+        if not item:
+            return None
+        try:
+            return int(item.text().strip())
+        except ValueError:
+            return None
+
+    def tool_select(self):
+        """
+        Issue Tn to pre-select the chosen tool (tool prepare signal).
+        Does NOT load it into spindle — that requires M6.
+        """
+        t_num = self._get_selected_tool_num()
+        if t_num is None:
+            QMessageBox.warning(self.w, "No Tool Selected", "Select a tool row first.")
+            return
+        if not STATUS.machine_is_on():
+            QMessageBox.warning(self.w, "Machine Off", "Turn machine power ON first.")
+            return
+        try:
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete()
+            self.command.mdi(f"T{t_num}")
+            self.command.wait_complete()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self._update_tool_status_bar()
+            print(f"✓ Tool T{t_num} selected (prepared)")
+        except Exception as e:
+            print(f"Tool select error: {e}")
+
+    def tool_change_m6(self):
+        """
+        Execute T{n} M6 to perform a tool change for the selected tool.
+        Machine must be on and homed.
+        """
+        t_num = self._get_selected_tool_num()
+        if t_num is None:
+            QMessageBox.warning(self.w, "No Tool Selected", "Select a tool row first.")
+            return
+        if not STATUS.machine_is_on():
+            QMessageBox.warning(self.w, "Machine Off", "Turn machine power ON first.")
+            return
+        # Check homing
+        try:
+            self.stat.poll()
+            all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
+            if not all_homed:
+                reply = QMessageBox.question(
+                    self.w,
+                    "Not Homed",
+                    "Not all axes are homed.\nProceed with tool change anyway?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+        except:
+            pass
+        try:
+            print(f"\n*** TOOL CHANGE: T{t_num} M6 ***")
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete()
+            self.command.mdi(f"T{t_num} M6")
+            self.command.wait_complete()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self._update_tool_status_bar()
+            print(f"✓ Tool change to T{t_num} complete")
+            print("="*35 + "\n")
+        except Exception as e:
+            print(f"Tool change error: {e}")
+
+    def tool_touch_off_z(self):
+        """
+        Touch off Z axis to the value in spin_touch_z.
+        Issues G10 L10 P{tool} Z{value} — sets tool Z offset so that
+        current machine position corresponds to the given work Z.
+        Works in Manual mode (machine must be on and homed).
+        """
+        if not STATUS.machine_is_on():
+            QMessageBox.warning(self.w, "Machine Off", "Turn machine power ON first.")
+            return
+        try:
+            self.stat.poll()
+            tool_num = self.stat.tool_in_spindle
+        except:
+            tool_num = 0
+        if tool_num == 0:
+            QMessageBox.warning(
+                self.w,
+                "No Active Tool",
+                "Load a tool first (T{n} M6) before touching off."
+            )
+            return
+        try:
+            z_val = self.w.spin_touch_z.value()
+        except:
+            z_val = 0.0
+        reply = QMessageBox.question(
+            self.w,
+            "Touch Off Z",
+            f"Set Z offset for T{tool_num} to {z_val:.4f}?\n"
+            f"(G10 L10 P{tool_num} Z{z_val:.4f})",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            print(f"\n*** TOUCH OFF Z: T{tool_num} Z={z_val:.4f} ***")
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete()
+            # G10 L10: set tool offset using current position as reference
+            self.command.mdi(f"G10 L10 P{tool_num} Z{z_val:.4f}")
+            self.command.wait_complete()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            # Reload tool table to pick up new offset
+            self.tool_reload_table()
+            self._update_tool_status_bar()
+            print(f"✓ Z touch-off complete: T{tool_num} Z={z_val:.4f}")
+            print("="*35 + "\n")
+        except Exception as e:
+            print(f"Touch off Z error: {e}")
+
+    def tool_update_z_offset(self):
+        """
+        Update Z offset for selected tool row using G10 L1 (direct offset entry).
+        Reads Z offset value from the selected table row's Z column.
+        """
+        if not STATUS.machine_is_on():
+            QMessageBox.warning(self.w, "Machine Off", "Turn machine power ON first.")
+            return
+        t_num = self._get_selected_tool_num()
+        if t_num is None:
+            QMessageBox.warning(self.w, "No Tool Selected", "Select a tool row first.")
+            return
+        tbl = self.w.table_tools
+        row = tbl.currentRow()
+        z_item = tbl.item(row, 4)  # Column 4 = Z offset
+        if not z_item:
+            return
+        try:
+            z_val = float(z_item.text().strip())
+        except ValueError:
+            QMessageBox.critical(self.w, "Invalid Z", "Z offset must be a valid number.")
+            return
+        reply = QMessageBox.question(
+            self.w,
+            "Update Z Offset",
+            f"Set T{t_num} Z offset to {z_val:.4f} mm?\n(G10 L1 P{t_num} Z{z_val:.4f})",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            print(f"\n*** UPDATE Z OFFSET: T{t_num} Z={z_val:.4f} ***")
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete()
+            self.command.mdi(f"G10 L1 P{t_num} Z{z_val:.4f}")
+            self.command.wait_complete()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self.command.load_tool_table()
+            self._update_tool_status_bar()
+            print(f"✓ Z offset updated: T{t_num} Z={z_val:.4f}")
+            print("="*35 + "\n")
+        except Exception as e:
+            print(f"Update Z offset error: {e}")
+
+    def tool_load(self):
+        """
+        Load selected tool into spindle via T{n} M6 with G43 (apply offsets).
+        G43 activates the tool length compensation immediately after load.
+        """
+        t_num = self._get_selected_tool_num()
+        if t_num is None:
+            QMessageBox.warning(self.w, "No Tool Selected", "Select a tool row first.")
+            return
+        if not STATUS.machine_is_on():
+            QMessageBox.warning(self.w, "Machine Off", "Turn machine power ON first.")
+            return
+        try:
+            print(f"\n*** TOOL LOAD: T{t_num} M6 G43 ***")
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete()
+            self.command.mdi(f"T{t_num} M6")
+            self.command.wait_complete()
+            self.command.mdi(f"G43 H{t_num}")
+            self.command.wait_complete()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self._update_tool_status_bar()
+            print(f"✓ Tool T{t_num} loaded with G43 offset compensation")
+            print("="*35 + "\n")
+        except Exception as e:
+            print(f"Tool load error: {e}")
+
+    def tool_unload(self):
+        """
+        Unload current tool: T0 M6 G49 (cancel TLC + return to no tool).
+        """
+        if not STATUS.machine_is_on():
+            QMessageBox.warning(self.w, "Machine Off", "Turn machine power ON first.")
+            return
+        try:
+            self.stat.poll()
+            current_tool = self.stat.tool_in_spindle
+        except:
+            current_tool = 0
+        reply = QMessageBox.question(
+            self.w,
+            "Unload Tool",
+            f"Unload T{current_tool} from spindle?\n(T0 M6 G49)",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            print(f"\n*** TOOL UNLOAD: T0 M6 G49 ***")
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete()
+            self.command.mdi("T0 M6")
+            self.command.wait_complete()
+            self.command.mdi("G49")
+            self.command.wait_complete()
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self._update_tool_status_bar()
+            print("✓ Tool unloaded (T0 M6 G49)")
+            print("="*35 + "\n")
+        except Exception as e:
+            print(f"Tool unload error: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — END ADDED: TOOL MANAGEMENT —
+    # ═══════════════════════════════════════════════════════════════════════
 
 def get_handlers(halcomp, widgets, paths):
     """Return handler"""
