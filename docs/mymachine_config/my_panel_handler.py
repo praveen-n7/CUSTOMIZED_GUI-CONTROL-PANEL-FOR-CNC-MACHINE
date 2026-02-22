@@ -4,13 +4,22 @@ QtVCP Panel Handler - Mode-Based Visibility Control
 Version: 6.2 - ADDED MAX AXIS VELOCITY DISPLAY IN DRO
 """
 
-from PyQt5.QtCore import Qt, QTimer, QObject, QEvent
-from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QMenu, QTableWidgetItem, QMessageBox, QAbstractItemView
+from PyQt5.QtCore import Qt, QTimer, QObject, QEvent, QRect
+from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QMenu, QTableWidgetItem, QMessageBox, QAbstractItemView, QApplication, QSizePolicy
 from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor, QKeySequence
+
+# Enable HiDPI scaling — must be set BEFORE QApplication is created.
+# QtVCP creates the QApplication, so we set these attributes here as early as possible.
+try:
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+except Exception:
+    pass
 from qtvcp.core import Status, Action, Info
 import linuxcnc
 import os
 import time
+import math
 
 STATUS = Status()
 ACTION = Action()
@@ -229,6 +238,26 @@ class JointAssignmentDialog(QDialog):
         return self.result_mappings
 # — END ADDED: JOINT ASSIGNMENT DIALOG —
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RESPONSIVE LAYOUT: Overlay resize filter
+# Keeps frame_tool_panel (floating overlay) positioned over gcode_viewer area
+# whenever the main window is resized or shown.
+# ─────────────────────────────────────────────────────────────────────────────
+class _OverlayResizeFilter(QObject):
+    """Event filter that repositions the tool-panel overlay on window resize."""
+    def __init__(self, handler):
+        super().__init__()
+        self.handler = handler
+
+    def eventFilter(self, obj, event):
+        if event.type() in (QEvent.Resize, QEvent.Show):
+            try:
+                self.handler._reposition_tool_panel()
+            except Exception:
+                pass
+        return False
+
+
 class HandlerClass:
     def __init__(self, halcomp, widgets, paths):
         self.hal = halcomp
@@ -270,6 +299,14 @@ class HandlerClass:
         self.tool_file_path = None        # Resolved at init from INI
         self.tool_table_modified = False  # Track unsaved edits
         # — END ADDED: TOOL MANAGEMENT STATE —
+
+        # — ADDED: TOOL INFO PANEL CHANGE TRACKING —
+        # Track last known values to avoid redundant file reads and UI flicker
+        self._last_tool_in_spindle = -1          # -1 forces first update
+        self._last_spindle_speed   = -1.0        # -1.0 forces first Vc update
+        self._last_task_mode       = -1          # track mode for AUTO indicator
+        self._tool_info_cache      = {}          # cached data for current tool
+        # — END ADDED: TOOL INFO PANEL CHANGE TRACKING —
         
     def initialized__(self):
         """Called after widgets are initialized"""
@@ -277,24 +314,49 @@ class HandlerClass:
         print("QtVCP Panel - Mode-Based Visibility Control")
         print("Version 6.2 - MAX AXIS VELOCITY DISPLAY")
         print("="*50)
-        
+
+        # ── RESPONSIVE LAYOUT: Maximise window on startup ─────────────────
+        try:
+            self.w.showMaximized()
+        except Exception as e:
+            print(f"showMaximized note: {e}")
+
+        # ── RESPONSIVE LAYOUT: Overlay resize filter for tool panel ───────
+        # frame_tool_panel floats as an absolute overlay over the gcode_viewer
+        # area.  We keep it in sync whenever the window is resized.
+        try:
+            self._overlay_filter = _OverlayResizeFilter(self)
+            self.w.installEventFilter(self._overlay_filter)
+        except Exception as e:
+            print(f"Overlay resize filter note: {e}")
+
         # Configure DRO
         self.setup_dro()
         
-        # — ADDED: GCODE GRAPHICS VERIFICATION —
-        # GCodeGraphics widget (gcode_viewer) auto-connects to STATUS in QtVCP
-        # Verify it exists and will function correctly
+        # — ADDED: GCODE GRAPHICS INITIALIZATION —
+        # GCodeGraphics widget needs explicit initialization in some QtVCP versions.
+        # Force show + reset view so the OpenGL canvas is visible on startup.
         try:
             if hasattr(self.w, 'gcode_viewer'):
-                print("✓ GCode Graphics viewer ready")
-                # QtVCP GCodeGraphics widgets automatically:
-                # - Display loaded programs
-                # - Follow machine position
-                # - Update during jogging/execution
-                # No manual setup needed
+                self.w.gcode_viewer.show()
+                self.w.gcode_viewer.setVisible(True)
+                # Force the GL canvas to initialise and paint itself
+                try:
+                    self.w.gcode_viewer.set_current_view()
+                except Exception:
+                    pass
+                try:
+                    self.w.gcode_viewer.updateGL()
+                except Exception:
+                    pass
+                # Raise it so it is not hidden behind other widgets at startup
+                self.w.gcode_viewer.lower()   # send to back so DRO overlays on top
+                print("✓ GCode Graphics viewer initialised and visible")
+            else:
+                print("⚠ gcode_viewer widget not found - check widget name in UI file")
         except Exception as e:
-            print(f"GCode Graphics note: {e}")
-        # — END ADDED: GCODE GRAPHICS VERIFICATION —
+            print(f"GCode Graphics init error: {e}")
+        # — END ADDED: GCODE GRAPHICS INITIALIZATION —
         
         # — ADDED: DRO VISIBILITY FIX —
         # Ensure DRO GroupBox appears on top of GCodeGraphics viewer
@@ -450,6 +512,39 @@ class HandlerClass:
         # — ADDED: TOOL MANAGEMENT SETUP —
         self.setup_tool_management()
         # — END ADDED: TOOL MANAGEMENT SETUP —
+
+        # — ADDED: AUTO MODE TOOL CHANGE REFRESH —
+        # STATUS.tool-in-spindle-changed fires in ALL modes (MANUAL, MDI, AUTO).
+        # This ensures table_tools refreshes when M6 executes during a program run.
+        STATUS.connect('tool-in-spindle-changed', self._on_tool_in_spindle_changed)
+        # — END ADDED: AUTO MODE TOOL CHANGE REFRESH —
+
+        # — ADDED: TOOL INFO PANEL DYNAMIC PROPERTIES —
+        # Set toolInfoRole dynamic properties so CSS selectors activate correctly
+        try:
+            _col_headers = [
+                'lbl_col_toolno', 'lbl_col_diam', 'lbl_col_zoff',
+                'lbl_col_vc', 'lbl_col_desc',
+            ]
+            _col_values = [
+                'toolNoValue', 'toolDiameterValue', 'toolOffsetZValue',
+                'toolVcValue', 'toolDescValue',
+            ]
+            for name in _col_headers:
+                w = getattr(self.w, name, None)
+                if w:
+                    w.setProperty('toolInfoRole', 'colHeader')
+                    w.style().unpolish(w)
+                    w.style().polish(w)
+            for name in _col_values:
+                w = getattr(self.w, name, None)
+                if w:
+                    w.setProperty('toolInfoRole', 'colValue')
+                    w.style().unpolish(w)
+                    w.style().polish(w)
+        except Exception as e:
+            print(f"Tool info property note: {e}")
+        # — END ADDED: TOOL INFO PANEL DYNAMIC PROPERTIES —
         
         # — ADDED: ARROW KEY TO JOG BUTTON MIRROR —
         # Create keyboard shortcuts that trigger existing jog button signals
@@ -661,6 +756,12 @@ class HandlerClass:
         except Exception:
             pass
         # — END ADDED ——————————————————————————————————————————————————————
+        # — ADDED: TOOL INFO PANEL UPDATE —
+        try:
+            self._update_tool_info_panel()
+        except Exception:
+            pass
+        # — END ADDED: TOOL INFO PANEL UPDATE —
     
     def is_auto_running(self):
         """Check if auto mode program is running"""
@@ -718,6 +819,27 @@ class HandlerClass:
                 print(f"  Total lines: {len(lines)}")
                 print(f"  Ready to run - Click CYCLE START")
                 print("="*50 + "\n")
+
+                # — ADDED: FORCE GCODE GRAPHICS REFRESH AFTER LOAD —
+                # After ACTION.OPEN_PROGRAM the GL canvas needs a view reset
+                # and repaint to actually draw the new toolpath.
+                try:
+                    if hasattr(self.w, 'gcode_viewer'):
+                        # Small delay via QTimer to let LinuxCNC finish loading
+                        from PyQt5.QtCore import QTimer as _QT
+                        def _refresh_view():
+                            try:
+                                self.w.gcode_viewer.set_current_view()
+                            except Exception:
+                                pass
+                            try:
+                                self.w.gcode_viewer.updateGL()
+                            except Exception:
+                                pass
+                        _QT.singleShot(300, _refresh_view)
+                except Exception as _e:
+                    print(f"GCode viewer refresh note: {_e}")
+                # — END ADDED: FORCE GCODE GRAPHICS REFRESH —
                 
             except Exception as e:
                 print(f"ERROR loading program: {e}")
@@ -1209,6 +1331,21 @@ class HandlerClass:
     # Panel Visibility
     # ────────────────────────────────────────────────────────────────────
 
+    def _reposition_tool_panel(self):
+        """
+        Resize and position frame_tool_panel so it covers the gcode_viewer area.
+        Called on every window resize and when the panel is shown.
+        """
+        try:
+            gv = self.w.gcode_viewer
+            fp = self.w.frame_tool_panel
+            # Map gcode_viewer top-left to centralwidget coordinates
+            pos = gv.mapTo(self.w.centralWidget(), gv.rect().topLeft())
+            # Make overlay same size as gcode_viewer widget
+            fp.setGeometry(pos.x(), pos.y(), gv.width(), gv.height())
+        except Exception:
+            pass
+
     def toggle_tool_panel(self):
         """Toggle tool management panel visibility"""
         if self.tool_panel_visible:
@@ -1218,6 +1355,7 @@ class HandlerClass:
 
     def show_tool_panel(self):
         """Show tool panel, overlay gcode viewer, refresh table"""
+        self._reposition_tool_panel()   # ← ensure correct position/size first
         self.tool_panel_visible = True
         self.w.frame_tool_panel.setVisible(True)
         self.w.frame_tool_panel.raise_()
@@ -1865,6 +2003,175 @@ class HandlerClass:
             print("="*35 + "\n")
         except Exception as e:
             print(f"Tool unload error: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — ADDED: AUTO MODE TOOL CHANGE HANDLER —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _on_tool_in_spindle_changed(self, obj, tool_num):
+        """
+        Slot called by STATUS whenever tool_in_spindle changes.
+        Fires in MANUAL, MDI, and AUTO mode — including M6 during program execution.
+        Refreshes table_tools so offsets and active-tool row stay correct.
+        If the panel is closed, we still mark a reload-needed flag so the
+        table is fresh the next time the user opens it.
+        """
+        try:
+            if self.tool_panel_visible:
+                self.tool_reload_table()
+            # _update_tool_info_panel() handles the info-bar labels separately
+            # via its own change-detection on _last_tool_in_spindle.
+            print(f"[AUTO Tool Change] tool_in_spindle → T{tool_num}")
+        except Exception as e:
+            print(f"Tool change refresh error: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — END ADDED: AUTO MODE TOOL CHANGE HANDLER —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — ADDED: TOOL INFORMATION PANEL (beside TOOL MGT button) —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _update_tool_info_panel(self):
+        """
+        Update the Tool Information bar (toolInfoContainer).
+        Called from periodic_update() every 100 ms — no extra timer needed.
+
+        Change-detection strategy:
+          • Tool number change  → re-read stat.tool_table + tool file (full refresh)
+          • Spindle speed change → recalculate Vc only (no file I/O)
+          • Task mode change     → update AUTO indicator on heading label
+          • No change            → skip all work (zero CPU overhead)
+
+        AUTO mode behaviour:
+          • toolInfoHeading shows "▌ Tool Information  [ AUTO - LIVE ]" in green
+          • Every T-word executed by the program triggers tool_num change → instant refresh
+          • Works because stat.tool_in_spindle updates the moment LinuxCNC
+            processes a T+M6 block during program execution
+        """
+        try:
+            # ── stat already polled by periodic_update caller ────────────
+            tool_num     = self.stat.tool_in_spindle
+            task_mode    = self.stat.task_mode
+
+            try:
+                spindle_speed = abs(self.stat.spindle[0]['speed'])
+            except Exception:
+                spindle_speed = 0.0
+
+            # ── 1. AUTO MODE INDICATOR — update heading when mode changes ─
+            if task_mode != self._last_task_mode:
+                self._last_task_mode = task_mode
+                try:
+                    if task_mode == linuxcnc.MODE_AUTO:
+                        self.w.toolInfoHeading.setText("▌ Tool Information  [ AUTO - LIVE ]")
+                        self.w.toolInfoHeading.setStyleSheet(
+                            "color: #00e676; font-weight: bold; font-size: 8pt;"
+                            "background: transparent; border: none;"
+                        )
+                    else:
+                        self.w.toolInfoHeading.setText("▌ Tool Information")
+                        self.w.toolInfoHeading.setStyleSheet(
+                            "color: #00aaff; font-weight: bold; font-size: 8pt;"
+                            "background: transparent; border: none;"
+                        )
+                except Exception:
+                    pass
+
+            # ── 2. TOOL CHANGE — only re-read when tool_in_spindle changes ─
+            tool_changed = (tool_num != self._last_tool_in_spindle)
+
+            if tool_changed:
+                self._last_tool_in_spindle = tool_num
+
+                # Defaults for no-tool state
+                d_val = 0.0
+                z_val = 0.0
+                t_str = str(tool_num) if tool_num != 0 else "—"
+                d_str = "—"
+                z_str = "—"
+                desc  = "No tool description available"
+
+                # ── Offsets from stat.tool_table (live, authoritative) ──
+                if tool_num != 0:
+                    try:
+                        for t in self.stat.tool_table:
+                            if t.id == tool_num:
+                                d_val = t.diameter
+                                z_val = t.zoffset
+                                d_str = f"{d_val:.3f} mm"
+                                z_str = f"{z_val:.3f} mm"
+                                break
+                    except Exception:
+                        pass
+
+                # ── Comment from tool file (only on tool change) ────────
+                if tool_num != 0 and self.tool_file_path and os.path.isfile(self.tool_file_path):
+                    try:
+                        with open(self.tool_file_path, 'r') as fh:
+                            for line in fh:
+                                raw = line.strip()
+                                comment = ""
+                                if ';' in raw:
+                                    raw, comment = raw.split(';', 1)
+                                    comment = comment.strip()
+                                tokens = raw.upper().split()
+                                t_val = 0
+                                for tok in tokens:
+                                    if tok.startswith('T') and len(tok) > 1:
+                                        try:
+                                            t_val = int(tok[1:])
+                                        except ValueError:
+                                            pass
+                                        break
+                                if t_val == tool_num:
+                                    if comment:
+                                        desc = comment
+                                    break
+                    except Exception:
+                        pass
+
+                # ── Cache for Vc recalculation on spindle speed change ──
+                self._tool_info_cache = {
+                    'd_val': d_val,
+                    't_str': t_str,
+                    'd_str': d_str,
+                    'z_str': z_str,
+                    'desc':  desc,
+                }
+
+                # ── Push static fields ───────────────────────────────────
+                self.w.toolNoValue.setText(t_str)
+                self.w.toolDiameterValue.setText(d_str)
+                self.w.toolOffsetZValue.setText(z_str)
+                self.w.toolDescValue.setText(desc)
+
+                # Log tool change in AUTO mode so it's visible in terminal
+                if task_mode == linuxcnc.MODE_AUTO:
+                    print(f"[Tool Info] AUTO tool change detected → T{tool_num}"
+                          f"  D={d_str}  Z={z_str}  [{desc}]")
+
+                # Reset spindle cache to force Vc recalculation below
+                self._last_spindle_speed = -1.0
+
+            # ── 3. Vc — recalculate when spindle speed changes ────────────
+            # Round to 1 RPM to avoid float noise triggering constant updates
+            spindle_rounded = round(spindle_speed, 0)
+            if spindle_rounded != self._last_spindle_speed or tool_changed:
+                self._last_spindle_speed = spindle_rounded
+
+                d_val  = self._tool_info_cache.get('d_val', 0.0)
+                vc_str = "— m/min"
+
+                if spindle_speed > 0 and d_val > 0:
+                    vc = math.pi * d_val * spindle_speed / 1000.0
+                    vc_str = f"{vc:.1f} m/min"
+
+                self.w.toolVcValue.setText(vc_str)
+
+        except Exception:
+            pass
 
     # ═══════════════════════════════════════════════════════════════════════
     # — END ADDED: TOOL MANAGEMENT —
