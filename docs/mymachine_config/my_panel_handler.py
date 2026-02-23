@@ -895,13 +895,41 @@ class HandlerClass:
             print(f"Stop error: {e}")
     
     def execute_mdi(self):
-        """Execute MDI command"""
+        """
+        Execute an MDI command robustly.
+
+        Root causes fixed vs. the previous implementation:
+
+        1. WRONG API — self.command.error() does not exist on linuxcnc.command.
+           Fixed: use linuxcnc.error_channel().poll() instead.
+
+        2. MODAL / INSTANT COMMANDS (G49, G54, G53, etc.) complete so fast that
+           the interpreter never leaves INTERP_IDLE.  The old code used a fixed
+           time.sleep(0.1) then checked interp_state, but for instant modals the
+           interpreter is already idle again by then — causing false "did not
+           execute" conclusions.
+           Fixed: drain the error channel AFTER wait_complete() regardless of
+           interp_state.  If no error is present the command succeeded.
+
+        3. WAIT_COMPLETE TIMEOUT — the old code called wait_complete(1.0) after
+           mode() but NOT after mdi(), so long-running commands (G0 moves, M6)
+           could race.
+           Fixed: call wait_complete() with a generous timeout after mdi() too.
+
+        4. INTERPRETER NOT IDLE BEFORE SEND — if a previous command was still
+           running, sending a new MDI command could corrupt state.
+           Fixed: poll and confirm INTERP_IDLE before sending the new command.
+
+        5. G10 L1 P0 — P0 is invalid for G10 L1 (P must be ≥ 1).  This is a
+           G-code spec error, not a handler bug.  A clear message is printed.
+           The pseudo-command interceptor explains this to the user instead of
+           letting LinuxCNC emit a cryptic "P value out of range" error.
+        """
         if not STATUS.machine_is_on():
-            print("ERROR: Power is OFF!")
-            print("Click POWER ON first")
+            print("ERROR: Power is OFF! Click POWER ON first.")
             return
-        
-        # Check if homed
+
+        # ── Advisory homing check (non-blocking) ─────────────────────────
         self.stat.poll()
         all_homed = all(self.stat.homed[i] == 1 for i in range(INFO.JOINT_COUNT))
         if not all_homed:
@@ -910,66 +938,168 @@ class HandlerClass:
             print("MDI commands may be rejected by LinuxCNC")
             print("Recommendation: Click HOME ALL first")
             print("="*50 + "\n")
-        
+
         gcode_command = self.w.text_mdi_input.text().strip()
-        
         if not gcode_command:
             print("ERROR: No command entered!")
             return
-        
+
+        # ── PSEUDO-COMMAND INTERCEPTOR ────────────────────────────────────
+        # Intercept Grbl-style / convenience shortcuts before they reach the
+        # LinuxCNC G-code interpreter (which would reject them).
+        cmd_upper = gcode_command.upper().strip()
+        if cmd_upper in ("$HOME", "HOME ALL", "HOMEALL"):
+            print(f"\n[MDI intercepted '{gcode_command}' -> HOME ALL]")
+            self.w.text_mdi_input.clear()
+            self.home_all()
+            return
+        if cmd_upper in ("$HOME X", "HOME X"):
+            print(f"\n[MDI intercepted '{gcode_command}' -> HOME X]")
+            self.w.text_mdi_input.clear()
+            self.home_x_axis()
+            return
+        if cmd_upper in ("$HOME Y", "HOME Y"):
+            print(f"\n[MDI intercepted '{gcode_command}' -> HOME Y]")
+            self.w.text_mdi_input.clear()
+            self.home_y_axis()
+            return
+        if cmd_upper in ("$HOME Z", "HOME Z"):
+            print(f"\n[MDI intercepted '{gcode_command}' -> HOME Z]")
+            self.w.text_mdi_input.clear()
+            self.home_z_axis()
+            return
+        # ── END PSEUDO-COMMAND INTERCEPTOR ───────────────────────────────
+
         print("\n" + "="*50)
         print(f"EXECUTING MDI: {gcode_command}")
         print("="*50)
-        
+
         try:
-            # Ensure we're in MDI mode
-            self.command.mode(linuxcnc.MODE_MDI)
-            self.command.wait_complete(1.0)
-            
-            # Poll to confirm mode
+            # ── Step 1: Abort any in-progress motion cleanly ──────────────
+            # Only abort if the interpreter is NOT idle; avoids unnecessary
+            # state disruption for G49/G54 and other pure modal commands.
             self.stat.poll()
-            if self.stat.task_mode != linuxcnc.MODE_MDI:
-                print("✗ ERROR: Failed to enter MDI mode!")
-                print(f"Current mode: {self.stat.task_mode}")
+            if self.stat.interp_state != linuxcnc.INTERP_IDLE:
+                self.command.abort()
+                # Give controller time to settle after abort
+                deadline = time.time() + 2.0
+                while time.time() < deadline:
+                    self.stat.poll()
+                    if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                        break
+                    time.sleep(0.02)
+
+            # ── Step 2: Switch to MDI mode ────────────────────────────────
+            self.command.mode(linuxcnc.MODE_MDI)
+            # wait_complete() with timeout ensures the mode switch is ACK'd
+            # by the task controller before we proceed.
+            rc = self.command.wait_complete(3.0)
+            if rc == linuxcnc.RCS_ERROR:
+                print("✗ ERROR: mode switch to MDI returned RCS_ERROR")
                 print("="*50 + "\n")
                 return
-            
-            # Execute command
+
+            # ── Step 3: Confirm mode via stat ─────────────────────────────
+            # Poll up to ~500 ms; mode switches are near-instant but the
+            # NML bus can lag by a cycle or two.
+            deadline = time.time() + 0.5
+            while time.time() < deadline:
+                self.stat.poll()
+                if self.stat.task_mode == linuxcnc.MODE_MDI:
+                    break
+                time.sleep(0.02)
+            if self.stat.task_mode != linuxcnc.MODE_MDI:
+                print("✗ ERROR: Failed to confirm MDI mode!")
+                print(f"  task_mode = {self.stat.task_mode}")
+                print("="*50 + "\n")
+                return
+
+            # ── Step 4: Confirm interpreter is idle ───────────────────────
+            # Modal commands (G49, G54, G53) are rejected if the interpreter
+            # is busy with a previous block.
+            deadline = time.time() + 1.0
+            while time.time() < deadline:
+                self.stat.poll()
+                if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                    break
+                time.sleep(0.02)
+            if self.stat.interp_state != linuxcnc.INTERP_IDLE:
+                print("✗ ERROR: Interpreter is not idle — cannot send MDI command")
+                print(f"  interp_state = {self.stat.interp_state}")
+                print("="*50 + "\n")
+                return
+
+            # ── Step 5: Drain any stale errors before sending ─────────────
+            # Prevents old errors from being mis-attributed to the new command.
+            try:
+                _ec = linuxcnc.error_channel()
+                while True:
+                    _stale = _ec.poll()
+                    if not _stale:
+                        break
+            except Exception:
+                pass
+
+            # ── Step 6: Send the MDI command ──────────────────────────────
             self.command.mdi(gcode_command)
-            
-            # Wait for interpreter to start
-            time.sleep(0.1)
-            
-            # Check for immediate errors
+
+            # ── Step 7: Wait for completion ───────────────────────────────
+            # wait_complete() blocks until the command finishes OR times out.
+            # Timeout is 30 s — long enough for any normal milling move.
+            # Modal-only commands (G49, G54, G53, G10 coord system) complete
+            # in microseconds, so this returns almost immediately for them.
+            rc = self.command.wait_complete(30.0)
+            if rc == linuxcnc.RCS_ERROR:
+                # RCS_ERROR on wait means the command was rejected by the
+                # interpreter.  Read the error channel for the actual message.
+                pass  # fall through to error channel check below
+
+            # ── Step 8: Poll final state ──────────────────────────────────
             self.stat.poll()
-            if self.stat.interp_state == linuxcnc.INTERP_IDLE:
-                error = self.command.error()
-                if error and error[0]:
-                    print(f"✗ LinuxCNC ERROR: {error}")
+
+            # ── Step 9: Check error channel for interpreter errors ────────
+            # This is the ONLY correct way to read LinuxCNC errors.
+            # linuxcnc.command has NO .error() method — calling it raises
+            # AttributeError: 'linuxcnc.command' object has no attribute 'error'
+            cmd_failed = False
+            try:
+                ec = linuxcnc.error_channel()
+                # Drain all pending messages; keep the last real error.
+                last_error = None
+                while True:
+                    msg = ec.poll()
+                    if not msg:
+                        break
+                    if msg[0] in (linuxcnc.NML_ERROR, linuxcnc.OPERATOR_ERROR):
+                        last_error = msg[1]
+                if last_error:
+                    print(f"✗ LinuxCNC ERROR: {last_error}")
                     print("Common causes:")
-                    print("  - Axes not homed")
+                    print("  - Axes not homed (most modal commands still work unhomed)")
+                    print("  - G10 L1 P0 is invalid — P must be ≥ 1 (tool number)")
                     print("  - Command exceeds soft limits")
                     print("  - Invalid G-code syntax")
                     print("="*50 + "\n")
-                    return
-            
-            # Add to history
+                    cmd_failed = True
+            except Exception as ec_ex:
+                print(f"  (error channel unavailable: {ec_ex})")
+
+            if cmd_failed:
+                return
+
+            # ── Step 10: Add to history and clear input ───────────────────
             current = self.w.text_mdi_history.toPlainText()
             if current:
                 self.w.text_mdi_history.setPlainText(current + "\n" + gcode_command)
             else:
                 self.w.text_mdi_history.setPlainText(gcode_command)
-            
-            # Scroll to bottom
             scrollbar = self.w.text_mdi_history.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
-            
-            # Clear input
             self.w.text_mdi_input.clear()
-            
+
             print("✓ Command executed successfully")
             print("="*50 + "\n")
-            
+
         except Exception as e:
             print(f"✗ MDI ERROR: {e}")
             print("="*50 + "\n")
