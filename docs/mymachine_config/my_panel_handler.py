@@ -307,6 +307,11 @@ class HandlerClass:
         self._last_task_mode       = -1          # track mode for AUTO indicator
         self._tool_info_cache      = {}          # cached data for current tool
         # — END ADDED: TOOL INFO PANEL CHANGE TRACKING —
+
+        # — ADDED: COOLANT STATUS SYNC —
+        # None forces the very first periodic_update() to always paint the UI
+        self._last_coolant_state = None
+        # — END ADDED: COOLANT STATUS SYNC —
         
     def initialized__(self):
         """Called after widgets are initialized"""
@@ -503,6 +508,18 @@ class HandlerClass:
         # Start in MANUAL mode - show manual controls, hide MDI and Auto
         self.w.stackedWidget_modes.setCurrentIndex(0)  # Show page_manual
         self.w.btn_mode_manual.setChecked(True)
+
+        # ── COOLING PANEL: Connect buttons defined in .ui ─────────────────────
+        # groupBox_spindle and groupBox_cooling are now permanently placed in
+        # layout_spindle_cooling_permanent inside layout_content in the .ui file.
+        # They are always visible in MANUAL, MDI, and AUTO modes.
+        try:
+            self.w.btn_coolant_on.clicked.connect(self.coolant_on)
+            self.w.btn_coolant_off.clicked.connect(self.coolant_off)
+            print("✓ Cooling panel buttons connected (always visible in all modes)")
+        except Exception as e:
+            print(f"Cooling panel connect note: {e}")
+        # ── END COOLING PANEL SETUP ───────────────────────────────────────────
         
         # Setup periodic status update timer
         self.timer = QTimer()
@@ -756,6 +773,13 @@ class HandlerClass:
         except Exception:
             pass
         # — END ADDED ——————————————————————————————————————————————————————
+        # — ADDED: COOLANT STATUS SYNC ————————————————————————————————————
+        # stat.poll() was already called above; read coolant fields directly.
+        try:
+            self._update_coolant_status()
+        except Exception:
+            pass
+        # — END ADDED: COOLANT STATUS SYNC ———————————————————————————————
         # — ADDED: TOOL INFO PANEL UPDATE —
         try:
             self._update_tool_info_panel()
@@ -1056,6 +1080,12 @@ class HandlerClass:
 
             # ── Step 8: Poll final state ──────────────────────────────────
             self.stat.poll()
+            # Force immediate coolant UI sync — don't wait for next 100 ms tick
+            try:
+                self._last_coolant_state = None   # invalidate cache so update fires
+                self._update_coolant_status()
+            except Exception:
+                pass
 
             # ── Step 9: Check error channel for interpreter errors ────────
             # This is the ONLY correct way to read LinuxCNC errors.
@@ -1342,7 +1372,164 @@ class HandlerClass:
             return
         print(f"Spindle REV {self.spindle_speed} RPM")
         ACTION.SET_SPINDLE_ROTATION(-1, self.spindle_speed)
-    
+
+    # ── COOLING CONTROL ───────────────────────────────────────────────────────
+    def _send_coolant_mdi(self, gcode):
+        """
+        Send M8 or M9 via MDI then restore the previous mode.
+        Works in MANUAL, MDI, and AUTO modes.
+        AUTO: aborts any running program first (LinuxCNC cannot send MDI
+        while a program is executing — stop is mandatory before M8/M9).
+        """
+        if not STATUS.machine_is_on():
+            print("COOLANT: Machine power is OFF — ignored")
+            return
+        try:
+            self.stat.poll()
+            prev_mode = self.stat.task_mode
+
+            # If AUTO is running, stop before switching to MDI
+            if self.is_auto_running():
+                self.command.abort()
+                deadline = time.time() + 2.0
+                while time.time() < deadline:
+                    self.stat.poll()
+                    if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                        break
+                    time.sleep(0.02)
+
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete(2.0)
+            self.command.mdi(gcode)
+            self.command.wait_complete(5.0)
+
+            # Restore previous mode
+            if prev_mode == linuxcnc.MODE_AUTO:
+                self.command.mode(linuxcnc.MODE_AUTO)
+            elif prev_mode == linuxcnc.MODE_MANUAL:
+                self.command.mode(linuxcnc.MODE_MANUAL)
+            # (MDI stays in MDI)
+            self.command.wait_complete(1.0)
+            print(f"✓ Coolant command sent: {gcode}")
+        except Exception as e:
+            print(f"Coolant command error ({gcode}): {e}")
+
+    def coolant_on(self):
+        """COOLANT ON — sends M8, then lets _update_coolant_status() reflect truth"""
+        self._send_coolant_mdi("M8")
+        # Invalidate cache so the next periodic_update() repaints immediately
+        self._last_coolant_state = None
+
+    def coolant_off(self):
+        """COOLANT OFF — sends M9, then lets _update_coolant_status() reflect truth"""
+        self._send_coolant_mdi("M9")
+        # Invalidate cache so the next periodic_update() repaints immediately
+        self._last_coolant_state = None
+
+    # — ADDED: COOLANT STATUS SYNC METHOD —————————————————————————————————
+    # ── Stylesheet constants for coolant button states ─────────────────────
+    # ACTIVE styles — applied to the button that matches the current coolant state
+    _COOLANT_ON_ACTIVE_STYLE = (
+        "QPushButton { background-color: #27ae60; color: white;"
+        " border: 3px solid #ffffff; font-weight: bold;"
+        " border-radius: 4px; font-size: 10pt; }"
+        "QPushButton:hover { border-color: #ccffcc; }"
+        "QPushButton:pressed { background-color: #1e8449; }"
+    )
+    _COOLANT_OFF_ACTIVE_STYLE = (
+        "QPushButton { background-color: #c0392b; color: white;"
+        " border: 3px solid #ffffff; font-weight: bold;"
+        " border-radius: 4px; font-size: 10pt; }"
+        "QPushButton:hover { border-color: #ffcccc; }"
+        "QPushButton:pressed { background-color: #943126; }"
+    )
+    # INACTIVE styles — match the original .ui file base appearance (dimmed)
+    _COOLANT_ON_INACTIVE_STYLE = (
+        "QPushButton { background-color: #1a6e2e; color: #ffffff;"
+        " border: 2px solid #0d4a1e; font-weight: bold;"
+        " font-size: 10pt; border-radius: 4px; opacity: 0.6; }"
+        "QPushButton:hover { border-color: #ffffff; }"
+        "QPushButton:pressed { background-color: #0d4a1e; }"
+    )
+    _COOLANT_OFF_INACTIVE_STYLE = (
+        "QPushButton { background-color: #7a1a1a; color: #ffffff;"
+        " border: 2px solid #4a0d0d; font-weight: bold;"
+        " font-size: 10pt; border-radius: 4px; opacity: 0.6; }"
+        "QPushButton:hover { border-color: #ffffff; }"
+        "QPushButton:pressed { background-color: #4a0d0d; }"
+    )
+    # ── END stylesheet constants ────────────────────────────────────────────
+
+    def _update_coolant_status(self):
+        """
+        Reads stat.coolant_flood and stat.coolant_mist — both set by M8/M9
+        regardless of whether the command came from a button, MDI, or a
+        running G-code program.
+
+        Called from periodic_update() every 100 ms.
+        Polls stat itself so it always gets a fresh read — never depends on
+        the outer periodic_update() try/except block having succeeded.
+
+        Change-detection: UI is only repainted when the combined coolant
+        state actually changes — zero overhead on every stable cycle.
+
+        Button styles:
+          ON  → btn_coolant_on  bright green (active)  | btn_coolant_off dim dark-red (inactive)
+          OFF → btn_coolant_off bright red  (active)   | btn_coolant_on  dim dark-green (inactive)
+        """
+        # Always poll fresh — do not rely on outer block having polled cleanly
+        self.stat.poll()
+        # M8 sets stat.flood (flood coolant); M7 sets stat.mist — treat either as ON
+        # NOTE: The correct linuxcnc.stat attribute names are 'flood' and 'mist',
+        # NOT 'coolant_flood' / 'coolant_mist' (those do not exist on the stat object).
+        coolant_on = bool(self.stat.flood or self.stat.mist)
+
+        if coolant_on == self._last_coolant_state:
+            return                          # no change — skip all UI work
+
+        self._last_coolant_state = coolant_on
+
+        if coolant_on:
+            # ── COOLANT ON ────────────────────────────────────────────────
+            try:
+                self.w.lbl_cooling_status.setText("Coolant: ON")
+                self.w.lbl_cooling_status.setStyleSheet(
+                    "color: #00ff88; font-weight: bold; font-size: 9pt;"
+                )
+            except Exception:
+                pass
+            try:
+                # ON button → bright green (active/highlighted)
+                self.w.btn_coolant_on.setStyleSheet(self._COOLANT_ON_ACTIVE_STYLE)
+            except Exception:
+                pass
+            try:
+                # OFF button → dimmed dark-red (inactive, restores UI-defined look)
+                self.w.btn_coolant_off.setStyleSheet(self._COOLANT_OFF_INACTIVE_STYLE)
+            except Exception:
+                pass
+        else:
+            # ── COOLANT OFF ───────────────────────────────────────────────
+            try:
+                self.w.lbl_cooling_status.setText("Coolant: OFF")
+                self.w.lbl_cooling_status.setStyleSheet(
+                    "color: #aaaaaa; font-weight: bold; font-size: 9pt;"
+                )
+            except Exception:
+                pass
+            try:
+                # OFF button → bright red (active/highlighted)
+                self.w.btn_coolant_off.setStyleSheet(self._COOLANT_OFF_ACTIVE_STYLE)
+            except Exception:
+                pass
+            try:
+                # ON button → dimmed dark-green (inactive, restores UI-defined look)
+                self.w.btn_coolant_on.setStyleSheet(self._COOLANT_ON_INACTIVE_STYLE)
+            except Exception:
+                pass
+    # — END ADDED: COOLANT STATUS SYNC METHOD ——————————————————————————————
+    # ── END COOLING CONTROL ───────────────────────────────────────────────────
+
     def update_feedrate_override(self, value):
         """Feed rate override"""
         self.w.label_feedrate.setText(f"{value}%")

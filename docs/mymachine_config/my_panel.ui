@@ -199,6 +199,7 @@ QPushButton:pressed { background-color: #d68910; padding-top: 7px; padding-left:
         </property>
        </widget>
       </item>
+
       <item>
        <spacer name="spacer_toolbar">
         <property name="orientation">
@@ -356,8 +357,8 @@ QPushButton:pressed { background-color: #f39c12; color: #000000; }</string>
           <widget class="QGroupBox" name="groupBox_dro">
            <property name="geometry">
             <rect>
-             <x>10</x>
-             <y>10</y>
+             <x>0</x>
+             <y>0</y>
              <width>205</width>
              <height>155</height>
             </rect>
@@ -1338,141 +1339,6 @@ QPushButton:pressed { background-color: #1c5980; padding-top: 7px; padding-left:
              <number>6</number>
             </property>
             <item>
-             <widget class="QGroupBox" name="groupBox_spindle">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="title">
-               <string>SPINDLE CONTROL</string>
-              </property>
-              <layout class="QVBoxLayout" name="layout_spindle_inner">
-               <property name="spacing">
-                <number>6</number>
-               </property>
-               <property name="leftMargin">
-                <number>8</number>
-               </property>
-               <property name="topMargin">
-                <number>16</number>
-               </property>
-               <property name="rightMargin">
-                <number>8</number>
-               </property>
-               <property name="bottomMargin">
-                <number>8</number>
-               </property>
-               <item>
-                <widget class="QLabel" name="label_spindle_speed">
-                 <property name="font">
-                  <font>
-                   <pointsize>9</pointsize>
-                   <weight>75</weight>
-                   <bold>true</bold>
-                  </font>
-                 </property>
-                 <property name="text">
-                  <string>Speed: 1000 RPM</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <layout class="QHBoxLayout" name="layout_spindle_buttons_slider">
-                 <item>
-                  <layout class="QVBoxLayout" name="layout_spindle_btns">
-                   <item>
-                    <widget class="QPushButton" name="btn_spindle_fwd">
-                     <property name="minimumSize">
-                      <size>
-                       <width>80</width>
-                       <height>40</height>
-                      </size>
-                     </property>
-                     <property name="font">
-                      <font>
-                       <pointsize>10</pointsize>
-                       <weight>75</weight>
-                       <bold>true</bold>
-                      </font>
-                     </property>
-                     <property name="text">
-                      <string>FORWARD</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QPushButton" name="btn_spindle_stop">
-                     <property name="minimumSize">
-                      <size>
-                       <width>80</width>
-                       <height>40</height>
-                      </size>
-                     </property>
-                     <property name="font">
-                      <font>
-                       <pointsize>10</pointsize>
-                       <weight>75</weight>
-                       <bold>true</bold>
-                      </font>
-                     </property>
-                     <property name="text">
-                      <string>STOP</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QPushButton" name="btn_spindle_rev">
-                     <property name="minimumSize">
-                      <size>
-                       <width>80</width>
-                       <height>40</height>
-                      </size>
-                     </property>
-                     <property name="font">
-                      <font>
-                       <pointsize>10</pointsize>
-                       <weight>75</weight>
-                       <bold>true</bold>
-                      </font>
-                     </property>
-                     <property name="text">
-                      <string>REVERSE</string>
-                     </property>
-                    </widget>
-                   </item>
-                  </layout>
-                 </item>
-                 <item>
-                  <widget class="QSlider" name="slider_spindle_speed">
-                   <property name="styleSheet">
-                    <string notr="true">QSlider::groove:vertical { background: #111111; width: 10px; border-radius: 5px; border: 1px solid #00aa00; }
-QSlider::sub-page:vertical { background: #2b2b2b; border-radius: 5px; }
-QSlider::add-page:vertical { background: #00cc00; border-radius: 5px; }
-QSlider::handle:vertical { background: #00ff00; border: 2px solid #003300; height: 20px; margin: 0 -6px; border-radius: 10px; }
-QSlider::handle:vertical:hover { background: #33ff33; }</string>
-                   </property>
-                   <property name="minimum">
-                    <number>100</number>
-                   </property>
-                   <property name="maximum">
-                    <number>24000</number>
-                   </property>
-                   <property name="value">
-                    <number>1000</number>
-                   </property>
-                   <property name="orientation">
-                    <enum>Qt::Vertical</enum>
-                   </property>
-                  </widget>
-                 </item>
-                </layout>
-               </item>
-              </layout>
-             </widget>
-            </item>
-            <item>
              <layout class="QVBoxLayout" name="layout_vel_overrides">
               <property name="spacing">
                <number>6</number>
@@ -2127,6 +1993,301 @@ QPushButton:pressed { background-color: #943126; padding-top: 7px; padding-left:
          </layout>
         </widget>
        </widget>
+      </item>
+      <item>
+       <layout class="QVBoxLayout" name="layout_spindle_cooling_permanent">
+        <property name="spacing">
+         <number>4</number>
+        </property>
+        <item>
+         <widget class="QGroupBox" name="groupBox_spindle">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="title">
+           <string>SPINDLE CONTROL</string>
+          </property>
+          <layout class="QVBoxLayout" name="layout_spindle_inner">
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <property name="leftMargin">
+            <number>8</number>
+           </property>
+           <property name="topMargin">
+            <number>16</number>
+           </property>
+           <property name="rightMargin">
+            <number>8</number>
+           </property>
+           <property name="bottomMargin">
+            <number>8</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_spindle_speed">
+             <property name="font">
+              <font>
+               <pointsize>9</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>Speed: 1000 RPM</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="layout_spindle_buttons_slider">
+             <item>
+              <layout class="QVBoxLayout" name="layout_spindle_btns">
+               <item>
+                <widget class="QPushButton" name="btn_spindle_fwd">
+                 <property name="minimumSize">
+                  <size>
+                   <width>80</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <weight>75</weight>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #1c5980; padding-top: 7px; padding-left: 7px; }</string>
+                 </property>
+                 <property name="text">
+                  <string>FORWARD</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_spindle_stop">
+                 <property name="minimumSize">
+                  <size>
+                   <width>80</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <weight>75</weight>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QPushButton { background-color: #c0392b; color: white; border: 2px solid #943126; font-weight: bold; border-radius: 4px; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #943126; padding-top: 7px; padding-left: 7px; }</string>
+                 </property>
+                 <property name="text">
+                  <string>STOP</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btn_spindle_rev">
+                 <property name="minimumSize">
+                  <size>
+                   <width>80</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <weight>75</weight>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QPushButton { background-color: #27ae60; color: white; border: 2px solid #1e8449; font-weight: bold; border-radius: 4px; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #1e8449; padding-top: 7px; padding-left: 7px; }</string>
+                 </property>
+                 <property name="text">
+                  <string>REVERSE</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QSlider" name="slider_spindle_speed">
+               <property name="styleSheet">
+                <string notr="true">QSlider::groove:vertical { background: #111111; width: 10px; border-radius: 5px; border: 1px solid #00aa00; }
+QSlider::sub-page:vertical { background: #2b2b2b; border-radius: 5px; }
+QSlider::add-page:vertical { background: #00cc00; border-radius: 5px; }
+QSlider::handle:vertical { background: #00ff00; border: 2px solid #003300; height: 20px; margin: 0 -6px; border-radius: 10px; }
+QSlider::handle:vertical:hover { background: #33ff33; }</string>
+               </property>
+               <property name="minimum">
+                <number>100</number>
+               </property>
+               <property name="maximum">
+                <number>24000</number>
+               </property>
+               <property name="value">
+                <number>1000</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupBox_cooling">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QGroupBox {
+    color: #00aaff;
+    border: 2px solid #1c5980;
+    border-radius: 6px;
+    margin-top: 14px;
+    font-weight: bold;
+    font-size: 10pt;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 4px;
+    color: #00aaff;
+}</string>
+          </property>
+          <property name="title">
+           <string>COOLING</string>
+          </property>
+          <layout class="QVBoxLayout" name="layout_cooling_inner">
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <property name="leftMargin">
+            <number>8</number>
+           </property>
+           <property name="topMargin">
+            <number>18</number>
+           </property>
+           <property name="rightMargin">
+            <number>8</number>
+           </property>
+           <property name="bottomMargin">
+            <number>8</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="lbl_cooling_status">
+             <property name="font">
+              <font>
+               <pointsize>9</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #aaaaaa; font-weight: bold; font-size: 9pt;</string>
+             </property>
+             <property name="text">
+              <string>Coolant: OFF</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="layout_cooling_buttons">
+             <property name="spacing">
+              <number>6</number>
+             </property>
+             <item>
+              <widget class="QPushButton" name="btn_coolant_on">
+               <property name="minimumSize">
+                <size>
+                 <width>80</width>
+                 <height>40</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QPushButton { background-color: #1a6e2e; color: #ffffff; border: 2px solid #0d4a1e; font-weight: bold; font-size: 10pt; border-radius: 4px; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #0d4a1e; padding-top: 7px; padding-left: 7px; }</string>
+               </property>
+               <property name="text">
+                <string>COOLANT
+ON (M8)</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btn_coolant_off">
+               <property name="minimumSize">
+                <size>
+                 <width>80</width>
+                 <height>40</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QPushButton { background-color: #7a1a1a; color: #ffffff; border: 2px solid #4a0d0d; font-weight: bold; font-size: 10pt; border-radius: 4px; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #4a0d0d; padding-top: 7px; padding-left: 7px; }</string>
+               </property>
+               <property name="text">
+                <string>COOLANT
+OFF (M9)</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <spacer name="spacer_spindle_cooling_bottom">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
       </item>
      </layout>
     </item>
