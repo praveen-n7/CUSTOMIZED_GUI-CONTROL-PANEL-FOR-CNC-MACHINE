@@ -312,6 +312,10 @@ class HandlerClass:
         # None forces the very first periodic_update() to always paint the UI
         self._last_coolant_state = None
         # — END ADDED: COOLANT STATUS SYNC —
+
+        # — ADDED: TOUCH-OFF AND VIEW TAB STATE —
+        self._touchoff_axis = None   # last selected axis for SET SELECTED
+        # — END ADDED: TOUCH-OFF AND VIEW TAB STATE —
         
     def initialized__(self):
         """Called after widgets are initialized"""
@@ -509,14 +513,13 @@ class HandlerClass:
         self.w.stackedWidget_modes.setCurrentIndex(0)  # Show page_manual
         self.w.btn_mode_manual.setChecked(True)
 
-        # ── COOLING PANEL: Connect buttons defined in .ui ─────────────────────
+        # ── COOLING PANEL: Connect button defined in .ui ──────────────────────
         # groupBox_spindle and groupBox_cooling are now permanently placed in
         # layout_spindle_cooling_permanent inside layout_content in the .ui file.
         # They are always visible in MANUAL, MDI, and AUTO modes.
         try:
-            self.w.btn_coolant_on.clicked.connect(self.coolant_on)
-            self.w.btn_coolant_off.clicked.connect(self.coolant_off)
-            print("✓ Cooling panel buttons connected (always visible in all modes)")
+            self.w.btn_coolant_toggle.clicked.connect(self.coolant_toggle)
+            print("✓ Cooling panel toggle button connected (always visible in all modes)")
         except Exception as e:
             print(f"Cooling panel connect note: {e}")
         # ── END COOLING PANEL SETUP ───────────────────────────────────────────
@@ -529,6 +532,14 @@ class HandlerClass:
         # — ADDED: TOOL MANAGEMENT SETUP —
         self.setup_tool_management()
         # — END ADDED: TOOL MANAGEMENT SETUP —
+
+        # — ADDED: TOUCH-OFF SECTION SETUP —
+        self.setup_touchoff_section()
+        # — END ADDED: TOUCH-OFF SECTION SETUP —
+
+        # — ADDED: PREVIEW / OFFSET PAGE TABS SETUP —
+        self.setup_graphics_tabs()
+        # — END ADDED: PREVIEW / OFFSET PAGE TABS SETUP —
 
         # — ADDED: AUTO MODE TOOL CHANGE REFRESH —
         # STATUS.tool-in-spindle-changed fires in ALL modes (MANUAL, MDI, AUTO).
@@ -1414,83 +1425,56 @@ class HandlerClass:
         except Exception as e:
             print(f"Coolant command error ({gcode}): {e}")
 
-    def coolant_on(self):
-        """COOLANT ON — sends M8, then lets _update_coolant_status() reflect truth"""
-        self._send_coolant_mdi("M8")
+    def coolant_toggle(self):
+        """Single coolant toggle — reads live stat to decide M8 or M9."""
+        try:
+            self.stat.poll()
+            coolant_on = bool(self.stat.flood or self.stat.mist)
+        except Exception:
+            coolant_on = False
+        if coolant_on:
+            self._send_coolant_mdi("M9")
+        else:
+            self._send_coolant_mdi("M8")
         # Invalidate cache so the next periodic_update() repaints immediately
         self._last_coolant_state = None
 
-    def coolant_off(self):
-        """COOLANT OFF — sends M9, then lets _update_coolant_status() reflect truth"""
-        self._send_coolant_mdi("M9")
-        # Invalidate cache so the next periodic_update() repaints immediately
-        self._last_coolant_state = None
-
-    # — ADDED: COOLANT STATUS SYNC METHOD —————————————————————————————————
-    # ── Stylesheet constants for coolant button states ─────────────────────
-    # ACTIVE styles — applied to the button that matches the current coolant state
-    _COOLANT_ON_ACTIVE_STYLE = (
+    # ── Stylesheet constants for single coolant toggle button ──────────────
+    _COOLANT_BTN_ON_STYLE = (
         "QPushButton { background-color: #27ae60; color: white;"
         " border: 3px solid #ffffff; font-weight: bold;"
         " border-radius: 4px; font-size: 10pt; }"
         "QPushButton:hover { border-color: #ccffcc; }"
-        "QPushButton:pressed { background-color: #1e8449; }"
+        "QPushButton:pressed { background-color: #1e8449; padding-top: 7px; padding-left: 7px; }"
     )
-    _COOLANT_OFF_ACTIVE_STYLE = (
+    _COOLANT_BTN_OFF_STYLE = (
         "QPushButton { background-color: #c0392b; color: white;"
         " border: 3px solid #ffffff; font-weight: bold;"
         " border-radius: 4px; font-size: 10pt; }"
         "QPushButton:hover { border-color: #ffcccc; }"
-        "QPushButton:pressed { background-color: #943126; }"
+        "QPushButton:pressed { background-color: #943126; padding-top: 7px; padding-left: 7px; }"
     )
-    # INACTIVE styles — match the original .ui file base appearance (dimmed)
-    _COOLANT_ON_INACTIVE_STYLE = (
-        "QPushButton { background-color: #1a6e2e; color: #ffffff;"
-        " border: 2px solid #0d4a1e; font-weight: bold;"
-        " font-size: 10pt; border-radius: 4px; opacity: 0.6; }"
-        "QPushButton:hover { border-color: #ffffff; }"
-        "QPushButton:pressed { background-color: #0d4a1e; }"
-    )
-    _COOLANT_OFF_INACTIVE_STYLE = (
-        "QPushButton { background-color: #7a1a1a; color: #ffffff;"
-        " border: 2px solid #4a0d0d; font-weight: bold;"
-        " font-size: 10pt; border-radius: 4px; opacity: 0.6; }"
-        "QPushButton:hover { border-color: #ffffff; }"
-        "QPushButton:pressed { background-color: #4a0d0d; }"
-    )
-    # ── END stylesheet constants ────────────────────────────────────────────
 
     def _update_coolant_status(self):
         """
-        Reads stat.coolant_flood and stat.coolant_mist — both set by M8/M9
-        regardless of whether the command came from a button, MDI, or a
-        running G-code program.
+        Reads stat.flood / stat.mist (set by M8/M9 from any source: button,
+        MDI, or running G-code program) and updates the single toggle button.
 
         Called from periodic_update() every 100 ms.
-        Polls stat itself so it always gets a fresh read — never depends on
-        the outer periodic_update() try/except block having succeeded.
+        Change-detection: UI is only repainted when state actually changes.
 
-        Change-detection: UI is only repainted when the combined coolant
-        state actually changes — zero overhead on every stable cycle.
-
-        Button styles:
-          ON  → btn_coolant_on  bright green (active)  | btn_coolant_off dim dark-red (inactive)
-          OFF → btn_coolant_off bright red  (active)   | btn_coolant_on  dim dark-green (inactive)
+          Coolant ON  → btn_coolant_toggle: bright GREEN, text "COOLANT ON"
+          Coolant OFF → btn_coolant_toggle: bright RED,   text "COOLANT OFF"
         """
-        # Always poll fresh — do not rely on outer block having polled cleanly
         self.stat.poll()
-        # M8 sets stat.flood (flood coolant); M7 sets stat.mist — treat either as ON
-        # NOTE: The correct linuxcnc.stat attribute names are 'flood' and 'mist',
-        # NOT 'coolant_flood' / 'coolant_mist' (those do not exist on the stat object).
         coolant_on = bool(self.stat.flood or self.stat.mist)
 
         if coolant_on == self._last_coolant_state:
-            return                          # no change — skip all UI work
+            return  # no change — skip all UI work
 
         self._last_coolant_state = coolant_on
 
         if coolant_on:
-            # ── COOLANT ON ────────────────────────────────────────────────
             try:
                 self.w.lbl_cooling_status.setText("Coolant: ON")
                 self.w.lbl_cooling_status.setStyleSheet(
@@ -1499,17 +1483,11 @@ class HandlerClass:
             except Exception:
                 pass
             try:
-                # ON button → bright green (active/highlighted)
-                self.w.btn_coolant_on.setStyleSheet(self._COOLANT_ON_ACTIVE_STYLE)
-            except Exception:
-                pass
-            try:
-                # OFF button → dimmed dark-red (inactive, restores UI-defined look)
-                self.w.btn_coolant_off.setStyleSheet(self._COOLANT_OFF_INACTIVE_STYLE)
+                self.w.btn_coolant_toggle.setText("COOLANT ON")
+                self.w.btn_coolant_toggle.setStyleSheet(self._COOLANT_BTN_ON_STYLE)
             except Exception:
                 pass
         else:
-            # ── COOLANT OFF ───────────────────────────────────────────────
             try:
                 self.w.lbl_cooling_status.setText("Coolant: OFF")
                 self.w.lbl_cooling_status.setStyleSheet(
@@ -1518,16 +1496,10 @@ class HandlerClass:
             except Exception:
                 pass
             try:
-                # OFF button → bright red (active/highlighted)
-                self.w.btn_coolant_off.setStyleSheet(self._COOLANT_OFF_ACTIVE_STYLE)
+                self.w.btn_coolant_toggle.setText("COOLANT OFF")
+                self.w.btn_coolant_toggle.setStyleSheet(self._COOLANT_BTN_OFF_STYLE)
             except Exception:
                 pass
-            try:
-                # ON button → dimmed dark-green (inactive, restores UI-defined look)
-                self.w.btn_coolant_on.setStyleSheet(self._COOLANT_ON_INACTIVE_STYLE)
-            except Exception:
-                pass
-    # — END ADDED: COOLANT STATUS SYNC METHOD ——————————————————————————————
     # ── END COOLING CONTROL ───────────────────────────────────────────────────
 
     def update_feedrate_override(self, value):
@@ -2492,6 +2464,630 @@ class HandlerClass:
 
     # ═══════════════════════════════════════════════════════════════════════
     # — END ADDED: TOOL MANAGEMENT —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — ADDED: PREVIEW / OFFSET PAGE TABS (PART 3) —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def setup_graphics_tabs(self):
+        """
+        Wire the Preview / Offset Page tab buttons.
+        Preview  → show gcode_viewer, hide table_offsets
+        Offset Page → hide gcode_viewer, show table_offsets + populate it
+        Uses QButtonGroup for mutual exclusion.
+        """
+        try:
+            self._graphics_tab_group = QButtonGroup()
+            self._graphics_tab_group.addButton(self.w.btn_tab_preview)
+            self._graphics_tab_group.addButton(self.w.btn_tab_offsets)
+            self._graphics_tab_group.setExclusive(True)
+            self.w.btn_tab_preview.clicked.connect(self._show_preview_tab)
+            self.w.btn_tab_offsets.clicked.connect(self._show_offsets_tab)
+            # Setup offset table columns
+            tbl = self.w.table_offsets
+            tbl.setColumnCount(4)
+            tbl.setHorizontalHeaderLabels(["System", "X", "Y", "Z"])
+            tbl.horizontalHeader().setStretchLastSection(True)
+            tbl.verticalHeader().hide()
+            tbl.verticalHeader().setDefaultSectionSize(22)
+            print("✓ Preview/Offset Page tabs connected")
+        except Exception as e:
+            print(f"Graphics tabs setup note: {e}")
+
+    def _show_preview_tab(self):
+        """Switch to Preview: show GCode graphics, hide offset table."""
+        try:
+            self.w.gcode_viewer.setVisible(True)
+            self.w.table_offsets.setVisible(False)
+            self.w.btn_tab_preview.setChecked(True)
+            self.w.btn_tab_offsets.setChecked(False)
+            # Restore size policy so gcode_viewer expands
+            from PyQt5.QtWidgets import QSizePolicy
+            self.w.gcode_viewer.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.w.gcode_viewer.updateGeometry()
+        except Exception as e:
+            print(f"Preview tab note: {e}")
+
+    def _show_offsets_tab(self):
+        """Switch to Offset Page: hide GCode graphics, show + populate offset table."""
+        try:
+            self.w.gcode_viewer.setVisible(False)
+            self.w.table_offsets.setVisible(True)
+            self.w.btn_tab_preview.setChecked(False)
+            self.w.btn_tab_offsets.setChecked(True)
+            # Restore size policy so table_offsets expands
+            from PyQt5.QtWidgets import QSizePolicy
+            self.w.table_offsets.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.w.table_offsets.updateGeometry()
+            self._populate_offset_table()
+        except Exception as e:
+            print(f"Offsets tab note: {e}")
+
+    def _populate_offset_table(self):
+        """
+        Read work coordinate offsets from stat.g5x_offsets + stat.g92_offset
+        and fill table_offsets.
+        g5x_offsets is a list of 9 coordinate systems: index 0=G54, 1=G55...8=G59.3
+        Each entry is a tuple of (X, Y, Z, A, B, C, U, V, W).
+        """
+        try:
+            self.stat.poll()
+            tbl = self.w.table_offsets
+            tbl.blockSignals(True)
+            tbl.setRowCount(0)
+
+            coord_names = ['G54', 'G55', 'G56', 'G57', 'G58', 'G59',
+                           'G59.1', 'G59.2', 'G59.3']
+            # Current active system index (0-based)
+            active_idx = getattr(self.stat, 'g5x_index', 0)
+            if active_idx > 0:
+                active_idx -= 1  # stat uses 1-based for g5x_index
+
+            offsets = getattr(self.stat, 'g5x_offsets', [])
+            for i, name in enumerate(coord_names):
+                if i < len(offsets):
+                    off = offsets[i]
+                else:
+                    off = (0.0, 0.0, 0.0)
+                row = tbl.rowCount()
+                tbl.insertRow(row)
+                # Mark active coord system
+                display_name = f"► {name}" if i == active_idx else name
+                from PyQt5.QtWidgets import QTableWidgetItem
+                from PyQt5.QtGui import QColor
+                items = [
+                    QTableWidgetItem(display_name),
+                    QTableWidgetItem(f"{off[0]:.4f}"),
+                    QTableWidgetItem(f"{off[1]:.4f}"),
+                    QTableWidgetItem(f"{off[2]:.4f}"),
+                ]
+                for col, item in enumerate(items):
+                    if i == active_idx:
+                        item.setForeground(QColor('#00e676'))
+                    tbl.setItem(row, col, item)
+
+            # Add G92 row
+            g92 = getattr(self.stat, 'g92_offset', (0.0, 0.0, 0.0))
+            row = tbl.rowCount()
+            tbl.insertRow(row)
+            from PyQt5.QtWidgets import QTableWidgetItem
+            from PyQt5.QtGui import QColor
+            for col, val in enumerate(['G92',
+                                       f"{g92[0]:.4f}",
+                                       f"{g92[1]:.4f}",
+                                       f"{g92[2]:.4f}"]):
+                item = QTableWidgetItem(val)
+                item.setForeground(QColor('#f39c12'))
+                tbl.setItem(row, col, item)
+
+            tbl.blockSignals(False)
+        except Exception as e:
+            print(f"Offset table populate error: {e}")
+            try:
+                self.w.table_offsets.blockSignals(False)
+            except Exception:
+                pass
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — END ADDED: PREVIEW / OFFSET PAGE TABS —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — ADDED: TOUCH-OFF SECTION (PART 2) —
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def setup_touchoff_section(self):
+        """
+        Wire the TOUCH OFF button and all axis buttons.
+        frame_touchoff_buttons is hidden until btn_touch_off is toggled.
+        """
+        try:
+            self.w.btn_touch_off.clicked.connect(self._toggle_touchoff_buttons)
+            self.w.btn_to_x.clicked.connect(lambda: self._touchoff_axis_keypad('X'))
+            self.w.btn_to_y.clicked.connect(lambda: self._touchoff_axis_keypad('Y'))
+            self.w.btn_to_z.clicked.connect(lambda: self._touchoff_axis_keypad('Z'))
+            self.w.btn_to_g92.clicked.connect(self._touchoff_g92)
+            self.w.btn_to_set_selected.clicked.connect(self._touchoff_set_selected)
+            print("✓ Touch-off section connected")
+
+            # FIX 2 — Hide touch off button by default; show only in MANUAL mode
+            try:
+                self.w.btn_touch_off.setVisible(False)
+            except Exception:
+                pass
+
+            # FIX 3 — Hide Preview / Offset tab buttons by default
+            try:
+                self.w.btn_tab_preview.setVisible(False)
+                self.w.btn_tab_offsets.setVisible(False)
+            except Exception:
+                pass
+
+            # FIX 2 — Connect STATUS mode signals to show/hide touch off button
+            STATUS.connect('mode-manual', self._on_mode_manual_touchoff)
+            STATUS.connect('mode-mdi',    self._on_mode_mdi_touchoff)
+            STATUS.connect('mode-auto',   self._on_mode_auto_touchoff)
+
+        except Exception as e:
+            print(f"Touch-off setup note: {e}")
+
+    def _toggle_touchoff_buttons(self):
+        """Show/hide the axis button row and Preview/Offset buttons when TOUCH OFF is toggled."""
+        try:
+            visible = self.w.btn_touch_off.isChecked()
+            self.w.frame_touchoff_buttons.setVisible(visible)
+            # FIX 3 — show/hide Preview and Offset tab buttons with Touch Off
+            self.w.btn_tab_preview.setVisible(visible)
+            self.w.btn_tab_offsets.setVisible(visible)
+        except Exception as e:
+            print(f"Touch-off toggle note: {e}")
+
+    # ── FIX 2: Touch Off button mode visibility ──────────────────────────
+    def _on_mode_manual_touchoff(self, *args):
+        """Show Touch Off button when machine enters MANUAL mode."""
+        try:
+            self.w.btn_touch_off.setVisible(True)
+        except Exception as e:
+            print(f"show touch off note: {e}")
+
+    def _on_mode_mdi_touchoff(self, *args):
+        """Hide Touch Off button (and its sub-buttons) when entering MDI."""
+        try:
+            self.w.btn_touch_off.setChecked(False)
+            self.w.frame_touchoff_buttons.setVisible(False)
+            self.w.btn_touch_off.setVisible(False)
+            # FIX 3 — also hide Preview/Offset buttons
+            self.w.btn_tab_preview.setVisible(False)
+            self.w.btn_tab_offsets.setVisible(False)
+        except Exception as e:
+            print(f"hide touch off (MDI) note: {e}")
+
+    def _on_mode_auto_touchoff(self, *args):
+        """Hide Touch Off button (and its sub-buttons) when entering AUTO."""
+        try:
+            self.w.btn_touch_off.setChecked(False)
+            self.w.frame_touchoff_buttons.setVisible(False)
+            self.w.btn_touch_off.setVisible(False)
+            # FIX 3 — also hide Preview/Offset buttons
+            self.w.btn_tab_preview.setVisible(False)
+            self.w.btn_tab_offsets.setVisible(False)
+        except Exception as e:
+            print(f"hide touch off (AUTO) note: {e}")
+    # ── END FIX 2/3 ───────────────────────────────────────────────────────
+
+    def _touchoff_axis_keypad(self, axis):
+        """
+        Open a numeric keypad dialog for the given axis.
+        On OK: apply the entered value as a work offset on the active G5x system.
+        Uses ACTION.SET_AXIS_ORIGIN which issues the correct G10 L20 command
+        against the currently active coordinate system — never hardcodes G54.
+        """
+        axis_upper = axis.upper()
+        self._touchoff_axis = axis_upper
+
+        # Map axis letter to position index for current position display
+        axis_idx = {'X': 0, 'Y': 1, 'Z': 2}.get(axis_upper, 0)
+
+        # Get current relative position for this axis
+        try:
+            self.stat.poll()
+            pos = self.stat.position
+            g5x = getattr(self.stat, 'g5x_offset', (0,) * 9)
+            g92 = getattr(self.stat, 'g92_offset', (0,) * 9)
+            tool_off = getattr(self.stat, 'tool_offset', (0,) * 9)
+            current_val = (pos[axis_idx]
+                           - g5x[axis_idx]
+                           - g92[axis_idx]
+                           - tool_off[axis_idx])
+        except Exception:
+            current_val = 0.0
+
+        # Build simple numeric input dialog (Gmoccapy-style)
+        value, ok = self._numeric_keypad_dialog(
+            title=f"Set axis {axis_upper} to:",
+            current_value=current_val
+        )
+        if not ok:
+            return
+
+        # Capture values for the deferred callback closure
+        _axis = axis_upper
+        _value = value
+
+        def _apply_touchoff():
+            """
+            Runs on the main thread after the dialog has closed.
+            Uses the exact same sequence as execute_mdi() which is proven
+            to work — same linuxcnc.command() object, same blocking pattern,
+            same main-thread context.  QTimer.singleShot(0) defers execution
+            until Qt has finished closing the dialog, preventing any
+            event-loop re-entrancy issues.
+            """
+            try:
+                if not STATUS.machine_is_on():
+                    print("Touch off skipped: machine is OFF")
+                    return
+
+                self.stat.poll()
+                g5x_index = getattr(self.stat, 'g5x_index', 1)
+                p_num = max(1, g5x_index)
+                gcode = f"G10 L20 P{p_num} {_axis}{_value:.4f}"
+                print(f"→ Touch off applying: {gcode}")
+
+                # ── Step 1: Abort if interpreter busy ─────────────────────
+                self.stat.poll()
+                if self.stat.interp_state != linuxcnc.INTERP_IDLE:
+                    self.command.abort()
+                    deadline = time.time() + 2.0
+                    while time.time() < deadline:
+                        self.stat.poll()
+                        if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                            break
+                        time.sleep(0.02)
+
+                # ── Step 2: Switch to MDI ─────────────────────────────────
+                self.command.mode(linuxcnc.MODE_MDI)
+                rc = self.command.wait_complete(3.0)
+                if rc == linuxcnc.RCS_ERROR:
+                    print("✗ Touch off: mode switch RCS_ERROR")
+                    return
+
+                # ── Step 3: Confirm MDI mode ──────────────────────────────
+                deadline = time.time() + 0.5
+                while time.time() < deadline:
+                    self.stat.poll()
+                    if self.stat.task_mode == linuxcnc.MODE_MDI:
+                        break
+                    time.sleep(0.02)
+                if self.stat.task_mode != linuxcnc.MODE_MDI:
+                    print("✗ Touch off: failed to enter MDI mode")
+                    return
+
+                # ── Step 4: Confirm interpreter idle ─────────────────────
+                deadline = time.time() + 1.0
+                while time.time() < deadline:
+                    self.stat.poll()
+                    if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                        break
+                    time.sleep(0.02)
+
+                # ── Step 5: Drain stale errors ────────────────────────────
+                try:
+                    _ec = linuxcnc.error_channel()
+                    while _ec.poll():
+                        pass
+                except Exception:
+                    pass
+
+                # ── Step 6: Send G10 L20 ─────────────────────────────────
+                self.command.mdi(gcode)
+                self.command.wait_complete(10.0)
+                self.stat.poll()
+
+                # ── Step 7: Return to MANUAL ──────────────────────────────
+                self.command.mode(linuxcnc.MODE_MANUAL)
+                self.command.wait_complete(2.0)
+                self.stat.poll()
+
+                print(f"✓ Touch off {_axis} → {_value:.4f} (G10 L20 P{p_num})")
+
+                # ── Step 8: Force full display refresh ────────────────────
+                try:
+                    STATUS.emit('reload-display')
+                except Exception:
+                    pass
+                try:
+                    STATUS.emit('update-machine-log')
+                except Exception:
+                    pass
+                try:
+                    if hasattr(self.w, 'gcode_viewer') and self.w.gcode_viewer.isVisible():
+                        self.w.gcode_viewer.updateGL()
+                except Exception:
+                    pass
+                try:
+                    if self.w.table_offsets.isVisible():
+                        self._populate_offset_table()
+                except Exception:
+                    pass
+
+            except Exception as e:
+                print(f"✗ Touch off apply error: {e}")
+
+        # Defer by 0 ms — lets Qt close the dialog before executing
+        QTimer.singleShot(0, _apply_touchoff)
+
+    def _touchoff_g92(self):
+        """
+        Apply G92 offset to the last selected axis.
+        Prompts for value; issues G92 Xvalue (or Y/Z etc.).
+        If no axis was selected yet, uses X as default.
+        """
+        axis = self._touchoff_axis if self._touchoff_axis else 'X'
+        axis_idx = {'X': 0, 'Y': 1, 'Z': 2}.get(axis, 0)
+
+        try:
+            self.stat.poll()
+            pos = self.stat.position
+            g5x = getattr(self.stat, 'g5x_offset', (0,) * 9)
+            current_val = pos[axis_idx] - g5x[axis_idx]
+        except Exception:
+            current_val = 0.0
+
+        value, ok = self._numeric_keypad_dialog(
+            title=f"G92 — Set axis {axis} to:",
+            current_value=current_val
+        )
+        if not ok:
+            return
+
+        try:
+            gcode = f"G92 {axis}{value:.4f}"
+            self._send_mdi_command(gcode)
+            print(f"✓ G92 {axis} → {value:.4f}")
+            if self.w.table_offsets.isVisible():
+                self._populate_offset_table()
+        except Exception as e:
+            print(f"G92 apply error: {e}")
+
+    def _touchoff_set_selected(self):
+        """
+        Apply value to currently active coordinate system for the last selected axis.
+        Reads the active G5x index from stat (never hardcodes G54).
+        Uses G10 L2 Pn to set the absolute offset value.
+        """
+        axis = self._touchoff_axis if self._touchoff_axis else 'X'
+        axis_idx = {'X': 0, 'Y': 1, 'Z': 2}.get(axis, 0)
+
+        try:
+            self.stat.poll()
+            # g5x_index: 0=G53 machine, 1=G54, 2=G55...
+            g5x_index = getattr(self.stat, 'g5x_index', 1)
+            p_num = max(1, g5x_index)   # P number for G10 L2
+            pos = self.stat.position
+            current_val = pos[axis_idx]
+        except Exception:
+            current_val = 0.0
+            p_num = 1
+
+        value, ok = self._numeric_keypad_dialog(
+            title=f"Set {axis} offset in active coord system (G10 L2 P{p_num}):",
+            current_value=current_val
+        )
+        if not ok:
+            return
+
+        try:
+            gcode = f"G10 L2 P{p_num} {axis}{value:.4f}"
+            self._send_mdi_command(gcode)
+            print(f"✓ SET SELECTED {axis} → {value:.4f}  (G10 L2 P{p_num})")
+            if self.w.table_offsets.isVisible():
+                self._populate_offset_table()
+        except Exception as e:
+            print(f"Set selected apply error: {e}")
+
+    def _numeric_keypad_dialog(self, title="Enter value:", current_value=0.0):
+        """
+        Gmoccapy-style numeric entry dialog.
+        Returns (float_value, accepted_bool).
+        Uses a custom dialog with digit buttons for touchscreen-friendly input.
+        """
+        from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout,
+                                     QLabel, QLineEdit, QPushButton, QGridLayout)
+        from PyQt5.QtCore import Qt
+
+        dlg = QDialog(self.w)
+        dlg.setWindowTitle(title)
+        dlg.setModal(True)
+        dlg.setMinimumWidth(300)
+        dlg.setStyleSheet("""
+            QDialog { background-color: #1a1a2e; color: white; }
+            QLabel  { color: #00aaff; font-weight: bold; font-size: 10pt; }
+            QLineEdit {
+                background-color: #0f3460; color: #00ff00;
+                border: 2px solid #1c5980; border-radius: 4px;
+                font-size: 16pt; font-weight: bold; padding: 4px;
+            }
+            QPushButton {
+                background-color: #2c3e50; color: white;
+                border: 1px solid #1c5980; border-radius: 4px;
+                font-size: 13pt; font-weight: bold;
+                min-width: 52px; min-height: 44px;
+            }
+            QPushButton:hover  { background-color: #3d5166; }
+            QPushButton:pressed { background-color: #1c5980; }
+            #btn_ok  { background-color: #27ae60; border-color: #1e8449; }
+            #btn_ok:hover { background-color: #2ecc71; }
+            #btn_cancel { background-color: #c0392b; border-color: #943126; }
+            #btn_cancel:hover { background-color: #e74c3c; }
+        """)
+
+        vbox = QVBoxLayout(dlg)
+        vbox.setSpacing(6)
+        vbox.setContentsMargins(12, 12, 12, 12)
+
+        lbl = QLabel(title)
+        lbl.setWordWrap(True)
+        vbox.addWidget(lbl)
+
+        edit = QLineEdit(f"{current_value:.4f}")
+        edit.setAlignment(Qt.AlignRight)
+        edit.selectAll()
+        vbox.addWidget(edit)
+
+        grid = QGridLayout()
+        grid.setSpacing(4)
+        btn_labels = [
+            ('7', 0, 0), ('8', 0, 1), ('9', 0, 2),
+            ('4', 1, 0), ('5', 1, 1), ('6', 1, 2),
+            ('1', 2, 0), ('2', 2, 1), ('3', 2, 2),
+            ('0', 3, 0), ('.', 3, 1), ('-', 3, 2),
+        ]
+        for label, row, col in btn_labels:
+            b = QPushButton(label)
+            b.clicked.connect(lambda checked, ch=label: edit.insert(ch))
+            grid.addWidget(b, row, col)
+
+        btn_bs = QPushButton('⌫')
+        btn_bs.clicked.connect(lambda: edit.setText(edit.text()[:-1]))
+        grid.addWidget(btn_bs, 4, 0)
+
+        btn_clr = QPushButton('C')
+        btn_clr.clicked.connect(lambda: edit.clear())
+        grid.addWidget(btn_clr, 4, 1, 1, 2)
+
+        vbox.addLayout(grid)
+
+        hbox = QHBoxLayout()
+        btn_ok = QPushButton('OK')
+        btn_ok.setObjectName('btn_ok')
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.setObjectName('btn_cancel')
+        btn_ok.clicked.connect(dlg.accept)
+        btn_cancel.clicked.connect(dlg.reject)
+        hbox.addWidget(btn_ok)
+        hbox.addWidget(btn_cancel)
+        vbox.addLayout(hbox)
+
+        result = dlg.exec_()
+        if result == QDialog.Accepted:
+            try:
+                val = float(edit.text())
+                return val, True
+            except ValueError:
+                return 0.0, False
+        return 0.0, False
+
+    def _send_mdi_command(self, gcode_command, on_complete=None):
+        """
+        Send a single MDI command off the Qt main thread using QThread so the
+        event loop is never blocked (blocking wait_complete on the main thread
+        deadlocks LinuxCNC's task loop, causing the silent no-op bug).
+
+        on_complete: optional callable — invoked on the main thread after the
+        command finishes (use this for DRO / offset-table refresh).
+        """
+        from PyQt5.QtCore import QThread, pyqtSignal, QObject
+        import linuxcnc as _lc
+        import time as _t
+
+        class _MdiWorker(QThread):
+            finished = pyqtSignal(bool, str)   # (success, error_msg)
+
+            def __init__(self, cmd):
+                super().__init__()
+                self._cmd = cmd
+
+            def run(self):
+                try:
+                    _cmd_obj = linuxcnc.command()
+                    _stat_obj = linuxcnc.stat()
+
+                    # Wait for interpreter idle (max 3 s)
+                    deadline = _t.time() + 3.0
+                    while _t.time() < deadline:
+                        _stat_obj.poll()
+                        if _stat_obj.interp_state == _lc.INTERP_IDLE:
+                            break
+                        _t.sleep(0.02)
+
+                    _cmd_obj.mode(_lc.MODE_MDI)
+                    _cmd_obj.wait_complete(3.0)
+
+                    # Wait for MODE_MDI to be confirmed (max 1 s)
+                    deadline = _t.time() + 1.0
+                    while _t.time() < deadline:
+                        _stat_obj.poll()
+                        if _stat_obj.task_mode == _lc.MODE_MDI:
+                            break
+                        _t.sleep(0.02)
+
+                    _cmd_obj.mdi(self._cmd)
+                    _cmd_obj.wait_complete(10.0)
+                    _stat_obj.poll()
+
+                    _cmd_obj.mode(_lc.MODE_MANUAL)
+                    _cmd_obj.wait_complete(2.0)
+
+                    self.finished.emit(True, '')
+                except Exception as exc:
+                    self.finished.emit(False, str(exc))
+
+        worker = _MdiWorker(gcode_command)
+
+        def _on_done(success, err):
+            if success:
+                print(f"✓ MDI done: {gcode_command}")
+            else:
+                print(f"✗ MDI error ({gcode_command}): {err}")
+            # Always refresh display on completion
+            try:
+                self.stat.poll()
+            except Exception:
+                pass
+            try:
+                STATUS.emit('reload-display')
+            except Exception:
+                pass
+            try:
+                STATUS.emit('update-machine-log')
+            except Exception:
+                pass
+            try:
+                if hasattr(self.w, 'gcode_viewer') and self.w.gcode_viewer.isVisible():
+                    self.w.gcode_viewer.updateGL()
+            except Exception:
+                pass
+            try:
+                if self.w.table_offsets.isVisible():
+                    self._populate_offset_table()
+            except Exception:
+                pass
+            if callable(on_complete):
+                try:
+                    on_complete()
+                except Exception:
+                    pass
+            # Keep reference alive until thread finishes
+            try:
+                self._mdi_workers.discard(worker)
+            except Exception:
+                pass
+
+        worker.finished.connect(_on_done)
+
+        # Keep a reference so the thread isn't garbage-collected mid-run
+        if not hasattr(self, '_mdi_workers'):
+            self._mdi_workers = set()
+        self._mdi_workers.add(worker)
+
+        worker.start()
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # — END ADDED: TOUCH-OFF SECTION —
     # ═══════════════════════════════════════════════════════════════════════
 
 def get_handlers(halcomp, widgets, paths):
