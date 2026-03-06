@@ -386,6 +386,50 @@ QPushButton:pressed { background-color: #333333; }</string>
            </widget>
           </item>
           <item>
+           <widget class="QPushButton" name="btn_tab_camera">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>28</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton { background-color: #555555; color: white; border: 2px solid #333333; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:checked { background-color: #f1c40f; color: #000000; border: 2px solid #d4ac0d; }
+QPushButton:pressed { background-color: #333333; }</string>
+            </property>
+            <property name="text">
+             <string>Camera</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btn_tab_ecdm">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>28</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton { background-color: #555555; color: white; border: 2px solid #333333; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:checked { background-color: #f1c40f; color: #000000; border: 2px solid #d4ac0d; }
+QPushButton:pressed { background-color: #333333; }</string>
+            </property>
+            <property name="text">
+             <string>ECDM Power Supply</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
            <spacer name="spacer_tabs_right">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -401,37 +445,56 @@ QPushButton:pressed { background-color: #333333; }</string>
          </layout>
         </item>
         <item>
-         <widget class="GCodeGraphics" name="gcode_viewer">
+         <widget class="QStackedWidget" name="stack_left_content">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>3</horstretch>
             <verstretch>1</verstretch>
            </sizepolicy>
           </property>
-          <property name="minimumSize">
-           <size>
-            <width>300</width>
-            <height>200</height>
-           </size>
+          <property name="currentIndex">
+           <number>0</number>
           </property>
-          <property name="background_color" stdset="0">
-           <color alpha="150">
-            <red>0</red>
-            <green>0</green>
-            <blue>0</blue>
-           </color>
-          </property>
-          <widget class="QGroupBox" name="groupBox_dro">
-           <property name="geometry">
-            <rect>
-             <x>0</x>
-             <y>0</y>
-             <width>205</width>
-             <height>155</height>
-            </rect>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">QGroupBox {
+          <!-- PAGE 0: Preview / Offset Page -->
+          <widget class="QWidget" name="stack_page_preview">
+           <layout class="QVBoxLayout" name="layout_stack_preview">
+            <property name="spacing"><number>0</number></property>
+            <property name="leftMargin"><number>0</number></property>
+            <property name="topMargin"><number>0</number></property>
+            <property name="rightMargin"><number>0</number></property>
+            <property name="bottomMargin"><number>0</number></property>
+            <item>
+             <widget class="GCodeGraphics" name="gcode_viewer">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                <horstretch>3</horstretch>
+                <verstretch>1</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>300</width>
+                <height>200</height>
+               </size>
+              </property>
+              <property name="background_color" stdset="0">
+               <color alpha="150">
+                <red>0</red>
+                <green>0</green>
+                <blue>0</blue>
+               </color>
+              </property>
+              <widget class="QGroupBox" name="groupBox_dro">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>205</width>
+                 <height>155</height>
+                </rect>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QGroupBox {
     background-color: rgba(0, 0, 0, 200);
     border: 1px solid #00ff00;
     border-radius: 3px;
@@ -439,273 +502,533 @@ QPushButton:pressed { background-color: #333333; }</string>
     font-size: 9pt;
     font-weight: bold;
 }</string>
-           </property>
-           <property name="title">
-            <string>Position</string>
-           </property>
-           <widget class="QLabel" name="label">
-            <property name="geometry">
-             <rect>
-              <x>10</x>
-              <y>25</y>
-              <width>20</width>
-              <height>25</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <pointsize>10</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">color: #00ff00;</string>
-            </property>
-            <property name="text">
-             <string>X:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-           <widget class="DROLabel" name="dro_x">
-            <property name="geometry">
-             <rect>
-              <x>35</x>
-              <y>23</y>
-              <width>160</width>
-              <height>28</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <family>Monospace</family>
-              <pointsize>12</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
-            </property>
-            <property name="text">
-             <string>0.000</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-           <widget class="QLabel" name="label_2">
-            <property name="geometry">
-             <rect>
-              <x>10</x>
-              <y>52</y>
-              <width>20</width>
-              <height>25</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <pointsize>10</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">color: #00ff00;</string>
-            </property>
-            <property name="text">
-             <string>Y:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-           <widget class="DROLabel" name="dro_y">
-            <property name="geometry">
-             <rect>
-              <x>35</x>
-              <y>50</y>
-              <width>160</width>
-              <height>28</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <family>Monospace</family>
-              <pointsize>12</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
-            </property>
-            <property name="text">
-             <string>0.000</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-           <widget class="QLabel" name="label_3">
-            <property name="geometry">
-             <rect>
-              <x>10</x>
-              <y>79</y>
-              <width>20</width>
-              <height>25</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <pointsize>10</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">color: #00ff00;</string>
-            </property>
-            <property name="text">
-             <string>Z:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-           <widget class="DROLabel" name="dro_z">
-            <property name="geometry">
-             <rect>
-              <x>35</x>
-              <y>77</y>
-              <width>160</width>
-              <height>28</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <family>Monospace</family>
-              <pointsize>12</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
-            </property>
-            <property name="text">
-             <string>0.000</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-           <widget class="QLabel" name="label_vel">
-            <property name="geometry">
-             <rect>
-              <x>10</x>
-              <y>106</y>
-              <width>20</width>
-              <height>25</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <pointsize>10</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">color: #00ff00;</string>
-            </property>
-            <property name="text">
-             <string>V:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-           <widget class="QLabel" name="dro_velocity">
-            <property name="geometry">
-             <rect>
-              <x>35</x>
-              <y>104</y>
-              <width>160</width>
-              <height>28</height>
-             </rect>
-            </property>
-            <property name="font">
-             <font>
-              <family>Monospace</family>
-              <pointsize>12</pointsize>
-              <weight>75</weight>
-              <bold>true</bold>
-             </font>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string>
-            </property>
-            <property name="text">
-             <string>0.000 mm/min</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-          </widget>
-         </widget>
-        </item>
-        <item>
-         <widget class="QTableWidget" name="table_offsets">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-            <horstretch>3</horstretch>
-            <verstretch>1</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="visible">
-           <bool>false</bool>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QTableWidget { background-color: #0f3460; alternate-background-color: #16213e; color: #e0e0e0; border: 1px solid #1c5980; gridline-color: #2c5f8a; selection-background-color: #3498db; selection-color: white; font-size: 9pt; }
+               </property>
+               <property name="title">
+                <string>Position</string>
+               </property>
+               <widget class="QLabel" name="label">
+                <property name="geometry">
+                 <rect><x>10</x><y>25</y><width>20</width><height>25</height></rect>
+                </property>
+                <property name="font"><font><pointsize>10</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">color: #00ff00;</string></property>
+                <property name="text"><string>X:</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+               <widget class="QLabel" name="dro_x">
+                <property name="geometry">
+                 <rect><x>35</x><y>23</y><width>160</width><height>28</height></rect>
+                </property>
+                <property name="font"><font><family>Monospace</family><pointsize>12</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string></property>
+                <property name="text"><string>   0.000</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+               <widget class="QLabel" name="label_2">
+                <property name="geometry">
+                 <rect><x>10</x><y>52</y><width>20</width><height>25</height></rect>
+                </property>
+                <property name="font"><font><pointsize>10</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">color: #00ff00;</string></property>
+                <property name="text"><string>Y:</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+               <widget class="QLabel" name="dro_y">
+                <property name="geometry">
+                 <rect><x>35</x><y>50</y><width>160</width><height>28</height></rect>
+                </property>
+                <property name="font"><font><family>Monospace</family><pointsize>12</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string></property>
+                <property name="text"><string>   0.000</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+               <widget class="QLabel" name="label_3">
+                <property name="geometry">
+                 <rect><x>10</x><y>79</y><width>20</width><height>25</height></rect>
+                </property>
+                <property name="font"><font><pointsize>10</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">color: #00ff00;</string></property>
+                <property name="text"><string>Z:</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+               <widget class="QLabel" name="dro_z">
+                <property name="geometry">
+                 <rect><x>35</x><y>77</y><width>160</width><height>28</height></rect>
+                </property>
+                <property name="font"><font><family>Monospace</family><pointsize>12</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string></property>
+                <property name="text"><string>   0.000</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+               <widget class="QLabel" name="label_vel">
+                <property name="geometry">
+                 <rect><x>10</x><y>106</y><width>20</width><height>25</height></rect>
+                </property>
+                <property name="font"><font><pointsize>10</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">color: #00ff00;</string></property>
+                <property name="text"><string>V:</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+               <widget class="QLabel" name="dro_velocity">
+                <property name="geometry">
+                 <rect><x>35</x><y>104</y><width>160</width><height>28</height></rect>
+                </property>
+                <property name="font"><font><family>Monospace</family><pointsize>12</pointsize><weight>75</weight><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">background-color: #000000; color: #00ff00; padding: 3px;</string></property>
+                <property name="text"><string>0.000 mm/min</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+               </widget>
+              </widget>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTableWidget" name="table_offsets">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                <horstretch>3</horstretch>
+                <verstretch>1</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="visible">
+               <bool>false</bool>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QTableWidget { background-color: #0f3460; alternate-background-color: #16213e; color: #e0e0e0; border: 1px solid #1c5980; gridline-color: #2c5f8a; selection-background-color: #3498db; selection-color: white; font-size: 9pt; }
 QTableWidget::item { padding: 2px 4px; }
 QHeaderView::section { background-color: #0a1628; color: #00aaff; border: 1px solid #1c5980; padding: 3px; font-size: 8pt; font-weight: bold; }</string>
-          </property>
-          <property name="editTriggers">
-           <set>QAbstractItemView::NoEditTriggers</set>
-          </property>
-          <property name="alternatingRowColors">
-           <bool>true</bool>
-          </property>
-          <property name="selectionMode">
-           <enum>QAbstractItemView::SingleSelection</enum>
-          </property>
-          <property name="selectionBehavior">
-           <enum>QAbstractItemView::SelectRows</enum>
-          </property>
-          <column>
-           <property name="text">
-            <string>System</string>
-           </property>
-          </column>
-          <column>
-           <property name="text">
-            <string>X</string>
-           </property>
-          </column>
-          <column>
-           <property name="text">
-            <string>Y</string>
-           </property>
-          </column>
-          <column>
-           <property name="text">
-            <string>Z</string>
-           </property>
-          </column>
+              </property>
+              <property name="editTriggers">
+               <set>QAbstractItemView::NoEditTriggers</set>
+              </property>
+              <property name="alternatingRowColors">
+               <bool>true</bool>
+              </property>
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SingleSelection</enum>
+              </property>
+              <property name="selectionBehavior">
+               <enum>QAbstractItemView::SelectRows</enum>
+              </property>
+              <column>
+               <property name="text"><string>System</string></property>
+              </column>
+              <column>
+               <property name="text"><string>X</string></property>
+              </column>
+              <column>
+               <property name="text"><string>Y</string></property>
+              </column>
+              <column>
+               <property name="text"><string>Z</string></property>
+              </column>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <!-- PAGE 1: Camera Tab -->
+          <widget class="QWidget" name="stack_page_camera">
+           <layout class="QVBoxLayout" name="layout_camera_page">
+            <property name="spacing"><number>6</number></property>
+            <property name="leftMargin"><number>4</number></property>
+            <property name="topMargin"><number>4</number></property>
+            <property name="rightMargin"><number>4</number></property>
+            <property name="bottomMargin"><number>4</number></property>
+            <item>
+             <widget class="QLabel" name="lbl_camera_title">
+              <property name="styleSheet">
+               <string notr="true">color: #00aaff; font-size: 10pt; font-weight: bold; background: transparent;</string>
+              </property>
+              <property name="text"><string>Camera View</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lbl_camera_feed">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                <horstretch>0</horstretch>
+                <verstretch>1</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize">
+               <size><width>200</width><height>150</height></size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">background-color: #111111; border: 2px solid #1c5980; border-radius: 4px; color: #555555;</string>
+              </property>
+              <property name="text"><string>Camera feed will appear here</string></property>
+              <property name="alignment"><set>Qt::AlignCenter</set></property>
+              <property name="scaledContents"><bool>false</bool></property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layout_camera_zoom">
+              <item>
+               <widget class="QLabel" name="lbl_zoom">
+                <property name="styleSheet"><string notr="true">color: #e0e0e0; font-size: 9pt;</string></property>
+                <property name="text"><string>Zoom:</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSlider" name="slider_camera_zoom">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>1</horstretch><verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QSlider::groove:horizontal { background: #111111; height: 8px; border-radius: 4px; border: 1px solid #1c5980; }
+QSlider::sub-page:horizontal { background: #2980b9; border-radius: 4px; }
+QSlider::add-page:horizontal { background: #2b2b2b; border-radius: 4px; }
+QSlider::handle:horizontal { background: #3498db; border: 2px solid black; width: 18px; margin: -5px 0; border-radius: 9px; }</string>
+                </property>
+                <property name="minimum"><number>1</number></property>
+                <property name="maximum"><number>100</number></property>
+                <property name="value"><number>10</number></property>
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="lbl_zoom_value">
+                <property name="styleSheet"><string notr="true">color: #e0e0e0; font-size: 9pt; min-width: 30px;</string></property>
+                <property name="text"><string>1.0</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_camera_reset_zoom">
+                <property name="minimumSize"><size><width>90</width><height>28</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #555555; color: white; border: 2px solid #333333; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #333333; }</string>
+                </property>
+                <property name="text"><string>Reset Zoom</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_camera_snapshot">
+                <property name="minimumSize"><size><width>90</width><height>28</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #1c5980; }</string>
+                </property>
+                <property name="text"><string>📷 Snapshot</string></property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layout_camera_zeros">
+              <property name="spacing"><number>6</number></property>
+              <item>
+               <widget class="QPushButton" name="btn_cam_x_zero">
+                <property name="minimumSize"><size><width>70</width><height>32</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #1c5980; }</string>
+                </property>
+                <property name="text"><string>X Zero</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_cam_y_zero">
+                <property name="minimumSize"><size><width>70</width><height>32</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #1c5980; }</string>
+                </property>
+                <property name="text"><string>Y Zero</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_cam_z_zero">
+                <property name="minimumSize"><size><width>70</width><height>32</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #1c5980; }</string>
+                </property>
+                <property name="text"><string>Z Zero</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_cam_xy_zero">
+                <property name="minimumSize"><size><width>80</width><height>32</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #27ae60; color: white; border: 2px solid #1e8449; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #1e8449; }</string>
+                </property>
+                <property name="text"><string>X+Y Zero</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_cam_xyz_zero">
+                <property name="minimumSize"><size><width>80</width><height>32</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #c0392b; color: white; border: 2px solid #943126; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #943126; }</string>
+                </property>
+                <property name="text"><string>XYZ Zero</string></property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_cam_zeros">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>10</width><height>20</height></size></property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+          <!-- PAGE 2: ECDM Power Supply Tab -->
+          <widget class="QWidget" name="stack_page_ecdm">
+           <layout class="QVBoxLayout" name="layout_ecdm_page">
+            <property name="spacing"><number>4</number></property>
+            <property name="leftMargin"><number>4</number></property>
+            <property name="topMargin"><number>4</number></property>
+            <property name="rightMargin"><number>4</number></property>
+            <property name="bottomMargin"><number>4</number></property>
+            <!-- Top row: Power Supply + Function Generator side by side -->
+            <item>
+             <layout class="QHBoxLayout" name="layout_ecdm_top">
+              <property name="spacing"><number>6</number></property>
+              <item>
+               <!-- POWER SUPPLY GROUP -->
+               <widget class="QGroupBox" name="groupBox_psu">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                  <horstretch>1</horstretch><verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QGroupBox { background-color: #0d1b2a; border: 2px solid #1c5980; border-radius: 6px; color: #00aaff; font-size: 9pt; font-weight: bold; margin-top: 12px; }
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 4px; color: #00aaff; }
+QLabel { color: #e0e0e0; font-size: 8pt; }
+QLineEdit { background-color: #0f3460; color: #00ff88; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 4px; font-size: 9pt; font-weight: bold; }
+QPushButton { color: white; font-weight: bold; border: 2px solid #222; border-radius: 4px; padding: 4px; font-size: 9pt; background-color: #555555; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #333; }</string>
+                </property>
+                <property name="title"><string>OWON SPE6103 — Power Supply</string></property>
+                <layout class="QVBoxLayout" name="layout_psu_inner">
+                 <property name="spacing"><number>4</number></property>
+                 <property name="leftMargin"><number>6</number></property>
+                 <property name="topMargin"><number>14</number></property>
+                 <property name="rightMargin"><number>6</number></property>
+                 <property name="bottomMargin"><number>6</number></property>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_psu_connection">
+                   <item><widget class="QLabel" name="lbl_psu_conn_title"><property name="text"><string>Connection:</string></property></widget></item>
+                   <item><widget class="QLabel" name="lbl_psu_connection"><property name="styleSheet"><string notr="true">color: #e74c3c; font-weight: bold;</string></property><property name="text"><string>● Disconnected</string></property></widget></item>
+                   <item><spacer name="sp_psu_conn"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>10</width><height>10</height></size></property></spacer></item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lbl_psu_meas_title"><property name="styleSheet"><string notr="true">color: #00aaff; font-weight: bold; font-size: 8pt;</string></property><property name="text"><string>Measurements</string></property></widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_psu_measurements">
+                   <item>
+                    <layout class="QVBoxLayout">
+                     <item><widget class="QLabel" name="lbl_volt_title"><property name="text"><string>Voltage</string></property></widget></item>
+                     <item><widget class="QLabel" name="lbl_psu_voltage"><property name="styleSheet"><string notr="true">color: #00ff88; font-size: 11pt; font-weight: bold; background: #0a1628; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 6px;</string></property><property name="text"><string>0.000 V</string></property></widget></item>
+                    </layout>
+                   </item>
+                   <item>
+                    <layout class="QVBoxLayout">
+                     <item><widget class="QLabel" name="lbl_curr_title"><property name="text"><string>Current</string></property></widget></item>
+                     <item><widget class="QLabel" name="lbl_psu_current"><property name="styleSheet"><string notr="true">color: #00ff88; font-size: 11pt; font-weight: bold; background: #0a1628; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 6px;</string></property><property name="text"><string>0.000 A</string></property></widget></item>
+                    </layout>
+                   </item>
+                   <item>
+                    <layout class="QVBoxLayout">
+                     <item><widget class="QLabel" name="lbl_pwr_title"><property name="text"><string>Power</string></property></widget></item>
+                     <item><widget class="QLabel" name="lbl_psu_power"><property name="styleSheet"><string notr="true">color: #00ff88; font-size: 11pt; font-weight: bold; background: #0a1628; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 6px;</string></property><property name="text"><string>0.000 W</string></property></widget></item>
+                    </layout>
+                   </item>
+                   <item>
+                    <layout class="QVBoxLayout">
+                     <item><widget class="QLabel" name="lbl_out_title"><property name="text"><string>Output</string></property></widget></item>
+                     <item><widget class="QLabel" name="lbl_psu_output"><property name="styleSheet"><string notr="true">color: #e74c3c; font-size: 10pt; font-weight: bold; background: #2a0a0a; border: 1px solid #943126; border-radius: 3px; padding: 2px 6px;</string></property><property name="text"><string>OFF</string></property></widget></item>
+                    </layout>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lbl_psu_setpoints_title"><property name="styleSheet"><string notr="true">color: #00aaff; font-weight: bold; font-size: 8pt;</string></property><property name="text"><string>Setpoints</string></property></widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_psu_volt_set">
+                   <item><widget class="QLabel" name="lbl_volt_set_title"><property name="text"><string>Voltage (V) 0-61</string></property></widget></item>
+                   <item><widget class="QLineEdit" name="edit_psu_voltage_set"><property name="text"><string>0.000</string></property><property name="minimumSize"><size><width>70</width><height>26</height></size></property></widget></item>
+                   <item><widget class="QPushButton" name="btn_psu_set_v"><property name="minimumSize"><size><width>55</width><height>26</height></size></property><property name="styleSheet"><string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1c5980; }</string></property><property name="text"><string>Set V</string></property></widget></item>
+                  </layout>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_psu_curr_set">
+                   <item><widget class="QLabel" name="lbl_curr_set_title"><property name="text"><string>Current (A) 0-3</string></property></widget></item>
+                   <item><widget class="QLineEdit" name="edit_psu_current_set"><property name="text"><string>0.000</string></property><property name="minimumSize"><size><width>70</width><height>26</height></size></property></widget></item>
+                   <item><widget class="QPushButton" name="btn_psu_set_i"><property name="minimumSize"><size><width>55</width><height>26</height></size></property><property name="styleSheet"><string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1c5980; }</string></property><property name="text"><string>Set I</string></property></widget></item>
+                  </layout>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_psu_output_btns">
+                   <item>
+                    <widget class="QPushButton" name="btn_psu_output_on">
+                     <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+                     <property name="minimumSize"><size><width>0</width><height>34</height></size></property>
+                     <property name="styleSheet"><string notr="true">QPushButton { background-color: #1a3a1a; color: #aaaaaa; border: 2px solid #2d5a2d; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1e8449; }</string></property>
+                     <property name="text"><string>OUTPUT ON</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btn_psu_output_off">
+                     <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+                     <property name="minimumSize"><size><width>0</width><height>34</height></size></property>
+                     <property name="styleSheet"><string notr="true">QPushButton { background-color: #3a1a1a; color: #aaaaaa; border: 2px solid #5a2d2d; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #943126; }</string></property>
+                     <property name="text"><string>OUTPUT OFF</string></property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lbl_psu_status"><property name="styleSheet"><string notr="true">color: #aaaaaa; font-size: 8pt;</string></property><property name="text"><string>SMPS output OFF</string></property></widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <!-- FUNCTION GENERATOR GROUP -->
+               <widget class="QGroupBox" name="groupBox_funcgen">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                  <horstretch>1</horstretch><verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QGroupBox { background-color: #0d1b2a; border: 2px solid #1c5980; border-radius: 6px; color: #00aaff; font-size: 9pt; font-weight: bold; margin-top: 12px; }
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 4px; color: #00aaff; }
+QLabel { color: #e0e0e0; font-size: 8pt; }
+QLineEdit { background-color: #0f3460; color: #00ff88; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 4px; font-size: 9pt; font-weight: bold; }
+QComboBox { background-color: #0f3460; color: #e0e0e0; border: 1px solid #1c5980; border-radius: 3px; padding: 2px; font-size: 9pt; }
+QPushButton { color: white; font-weight: bold; border: 2px solid #222; border-radius: 4px; padding: 4px; font-size: 9pt; background-color: #555555; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #333; }</string>
+                </property>
+                <property name="title"><string>UNI-T UTG932E — Function Generator</string></property>
+                <layout class="QVBoxLayout" name="layout_fg_inner">
+                 <property name="spacing"><number>4</number></property>
+                 <property name="leftMargin"><number>6</number></property>
+                 <property name="topMargin"><number>14</number></property>
+                 <property name="rightMargin"><number>6</number></property>
+                 <property name="bottomMargin"><number>6</number></property>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_fg_connection">
+                   <item><widget class="QLabel" name="lbl_fg_conn_title"><property name="text"><string>Connection:</string></property></widget></item>
+                   <item><widget class="QLabel" name="lbl_fg_connection"><property name="styleSheet"><string notr="true">color: #e74c3c; font-weight: bold;</string></property><property name="text"><string>● Disconnected</string></property></widget></item>
+                   <item><spacer name="sp_fg_conn"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>10</width><height>10</height></size></property></spacer></item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lbl_fg_ch1_status_title"><property name="styleSheet"><string notr="true">color: #00aaff; font-weight: bold; font-size: 8pt;</string></property><property name="text"><string>CH1 Status</string></property></widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_fg_status_row">
+                   <item><layout class="QVBoxLayout"><item><widget class="QLabel" name="lbl_fg_freq_title"><property name="text"><string>Frequency</string></property></widget></item><item><widget class="QLabel" name="lbl_fg_freq_val"><property name="styleSheet"><string notr="true">color: #00ff88; background: #0a1628; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 4px; font-weight: bold;</string></property><property name="text"><string>---</string></property></widget></item></layout></item>
+                   <item><layout class="QVBoxLayout"><item><widget class="QLabel" name="lbl_fg_wave_title"><property name="text"><string>Waveform</string></property></widget></item><item><widget class="QLabel" name="lbl_fg_wave_val"><property name="styleSheet"><string notr="true">color: #00ff88; background: #0a1628; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 4px; font-weight: bold;</string></property><property name="text"><string>---</string></property></widget></item></layout></item>
+                   <item><layout class="QVBoxLayout"><item><widget class="QLabel" name="lbl_fg_amp_title"><property name="text"><string>Amplitude</string></property></widget></item><item><widget class="QLabel" name="lbl_fg_amp_val"><property name="styleSheet"><string notr="true">color: #00ff88; background: #0a1628; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 4px; font-weight: bold;</string></property><property name="text"><string>---</string></property></widget></item></layout></item>
+                   <item><layout class="QVBoxLayout"><item><widget class="QLabel" name="lbl_fg_duty_title"><property name="text"><string>Duty Cycle</string></property></widget></item><item><widget class="QLabel" name="lbl_fg_duty_val"><property name="styleSheet"><string notr="true">color: #00ff88; background: #0a1628; border: 1px solid #1c5980; border-radius: 3px; padding: 2px 4px; font-weight: bold;</string></property><property name="text"><string>---</string></property></widget></item></layout></item>
+                   <item><layout class="QVBoxLayout"><item><widget class="QLabel" name="lbl_fg_out_title"><property name="text"><string>Output</string></property></widget></item><item><widget class="QLabel" name="lbl_fg_out_val"><property name="styleSheet"><string notr="true">color: #e74c3c; background: #2a0a0a; border: 1px solid #943126; border-radius: 3px; padding: 2px 4px; font-weight: bold;</string></property><property name="text"><string>OFF</string></property></widget></item></layout></item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lbl_fg_ch1_ctrl_title"><property name="styleSheet"><string notr="true">color: #00aaff; font-weight: bold; font-size: 8pt;</string></property><property name="text"><string>CH1 Control</string></property></widget>
+                 </item>
+                 <item>
+                  <layout class="QGridLayout" name="layout_fg_controls">
+                   <property name="spacing"><number>4</number></property>
+                   <item row="0" column="0"><widget class="QLabel" name="lbl_fg_freq_ctrl"><property name="text"><string>Frequency (1000 / 1kHz / 1MHz)</string></property></widget></item>
+                   <item row="0" column="1"><widget class="QLineEdit" name="edit_fg_frequency"><property name="text"><string>1000</string></property></widget></item>
+                   <item row="0" column="2"><widget class="QPushButton" name="btn_fg_set_freq"><property name="styleSheet"><string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 8pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1c5980; }</string></property><property name="text"><string>Set Freq</string></property></widget></item>
+                   <item row="1" column="0"><widget class="QLabel" name="lbl_fg_wave_ctrl"><property name="text"><string>Waveform</string></property></widget></item>
+                   <item row="1" column="1"><widget class="QComboBox" name="combo_fg_waveform"><item><property name="text"><string>SINe</string></property></item><item><property name="text"><string>SQUare</string></property></item><item><property name="text"><string>RAMP</string></property></item><item><property name="text"><string>PULSe</string></property></item><item><property name="text"><string>NOISe</string></property></item></widget></item>
+                   <item row="1" column="2"><widget class="QPushButton" name="btn_fg_set_wave"><property name="styleSheet"><string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 8pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1c5980; }</string></property><property name="text"><string>Set Wave</string></property></widget></item>
+                   <item row="2" column="0"><widget class="QLabel" name="lbl_fg_amp_ctrl"><property name="text"><string>Amplitude (Vpp)</string></property></widget></item>
+                   <item row="2" column="1"><widget class="QLineEdit" name="edit_fg_amplitude"><property name="text"><string>1.0</string></property></widget></item>
+                   <item row="2" column="2"><widget class="QPushButton" name="btn_fg_set_ampl"><property name="styleSheet"><string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 8pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1c5980; }</string></property><property name="text"><string>Set Ampl</string></property></widget></item>
+                   <item row="3" column="0"><widget class="QLabel" name="lbl_fg_duty_ctrl"><property name="text"><string>Duty Cycle (%) SQU/PUL only</string></property></widget></item>
+                   <item row="3" column="1"><widget class="QLineEdit" name="edit_fg_duty"><property name="text"><string>50</string></property></widget></item>
+                   <item row="3" column="2"><widget class="QPushButton" name="btn_fg_set_duty"><property name="styleSheet"><string notr="true">QPushButton { background-color: #2980b9; color: white; border: 2px solid #1c5980; font-weight: bold; border-radius: 4px; font-size: 8pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1c5980; }</string></property><property name="text"><string>Set Duty</string></property></widget></item>
+                  </layout>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="layout_fg_ch1_btns">
+                   <item>
+                    <widget class="QPushButton" name="btn_fg_ch1_on">
+                     <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+                     <property name="minimumSize"><size><width>0</width><height>34</height></size></property>
+                     <property name="styleSheet"><string notr="true">QPushButton { background-color: #1a3a1a; color: #aaaaaa; border: 2px solid #2d5a2d; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #1e8449; }</string></property>
+                     <property name="text"><string>CH1 ON</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btn_fg_ch1_off">
+                     <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+                     <property name="minimumSize"><size><width>0</width><height>34</height></size></property>
+                     <property name="styleSheet"><string notr="true">QPushButton { background-color: #3a1a1a; color: #aaaaaa; border: 2px solid #5a2d2d; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #fff; }
+QPushButton:pressed { background-color: #943126; }</string></property>
+                     <property name="text"><string>CH1 OFF</string></property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <!-- Graph area: real-time voltage/current -->
+            <item>
+             <widget class="QFrame" name="frame_ecdm_graph">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                <horstretch>0</horstretch><verstretch>1</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize"><size><width>0</width><height>150</height></size></property>
+              <property name="styleSheet">
+               <string notr="true">QFrame { background-color: #050d15; border: 2px solid #1c5980; border-radius: 4px; }</string>
+              </property>
+              <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+              <property name="frameShadow"><enum>QFrame::Raised</enum></property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
          </widget>
         </item>
         <item>
@@ -3018,12 +3341,6 @@ QPushButton:pressed { background-color: #f39c12; color: #000000; }</string>
    <class>GCodeGraphics</class>
    <extends>QWidget</extends>
    <header>qtvcp.widgets.gcode_graphics</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>DROLabel</class>
-   <extends>QLabel</extends>
-   <header>qtvcp.widgets.dro_widget</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

@@ -621,32 +621,83 @@ class HandlerClass:
         print("="*50 + "\n")
     
     def setup_dro(self):
-        """Configure DRO displays with axis labels"""
+        """
+        Initialise the DRO display labels.
+
+        ARCHITECTURE CHANGE — why DROLabel was replaced with plain QLabel
+        ─────────────────────────────────────────────────────────────────────
+        The QtVCP DROLabel widget self-updates by connecting to the STATUS
+        'current-position' signal in its __init__().  On this RPi build of
+        LinuxCNC 2.9, that signal provides machine (ABSOLUTE) coordinates
+        regardless of how reference_type / joint_number are configured —
+        apparently because the signal fires before the INI-derived offset data
+        is fully available to the STATUS object, or because the DROLabel on
+        this build defaults to ABSOLUTE and does not re-connect when the
+        property is changed after construction.
+
+        The result: DROLabel never showed work coordinates.  Setting
+        reference_type=0 via stdset="0" in the .ui and via direct Python
+        assignment in the handler both failed to change the behaviour.
+
+        THE FIX — gmoccapy approach:
+          dro_x / dro_y / dro_z are now plain QLabel widgets (changed in .ui).
+          This handler owns 100% of the DRO update logic via _update_dro(),
+          called every 100 ms from periodic_update() and immediately after
+          any touch-off or offset change.
+
+          Work position formula (matches gmoccapy exactly):
+            work[i] = stat.actual_position[i]
+                      - stat.g5x_offset[i]
+                      - stat.g92_offset[i]
+                      - stat.tool_offset[i]
+
+          stat.actual_position = ACTUAL feedback position in MACHINE coords
+              (matches INI: POSITION_FEEDBACK = ACTUAL)
+          stat.g5x_offset       = active G54–G59.3 offset (always live)
+          stat.g92_offset        = G92 offset (always live)
+          stat.tool_offset       = active tool length offset (always live)
+
+          Subtracting all three gives the position in the active WORK
+          coordinate system, matching POSITION_OFFSET = RELATIVE.
+          This is correct for G54–G59, G59.1–G59.3, and G92 simultaneously.
+        """
         try:
-            # X axis
-            self.w.dro_x.setProperty('joint_number', 0)
-            self.w.dro_x.setProperty('Qjoint_number', 0)
-            self.w.dro_x.setProperty('reference_type', 0)
-            self.w.dro_x.setProperty('metric_units', True)
-            self.w.dro_x.setProperty('mm_text_template', 'X: %10.3f')
-            
-            # Y axis
-            self.w.dro_y.setProperty('joint_number', 1)
-            self.w.dro_y.setProperty('Qjoint_number', 1)
-            self.w.dro_y.setProperty('reference_type', 0)
-            self.w.dro_y.setProperty('metric_units', True)
-            self.w.dro_y.setProperty('mm_text_template', 'Y: %10.3f')
-            
-            # Z axis
-            self.w.dro_z.setProperty('joint_number', 2)
-            self.w.dro_z.setProperty('Qjoint_number', 2)
-            self.w.dro_z.setProperty('reference_type', 0)
-            self.w.dro_z.setProperty('metric_units', True)
-            self.w.dro_z.setProperty('mm_text_template', 'Z: %10.3f')
-            
-            print("✓ DRO configured (X, Y, Z) - compact overlay at top-left with axis labels")
+            for w in (self.w.dro_x, self.w.dro_y, self.w.dro_z):
+                w.setText("   0.000")
+            print("✓ DRO initialised (plain QLabel — gmoccapy work-coord logic)")
         except Exception as e:
-            print(f"DRO note: {e}")
+            print(f"DRO init note: {e}")
+
+    def _update_dro(self):
+        """
+        Compute and display work-coordinate positions — gmoccapy DRO logic.
+
+        Called every 100 ms from periodic_update() (stat.poll() already done)
+        and immediately after touch-off / offset changes for instant response.
+
+        Formula (identical to gmoccapy's _update_dro()):
+            work[i] = actual_position[i] - g5x_offset[i]
+                      - g92_offset[i] - tool_offset[i]
+
+        Index mapping:  0=X  1=Y  2=Z
+        """
+        try:
+            pos  = self.stat.actual_position          # machine feedback (9-tuple)
+            g5x  = self.stat.g5x_offset               # active G54–G59.3 offset
+            g92  = self.stat.g92_offset                # G92 offset
+            tool = self.stat.tool_offset               # active tool offset
+
+            x = pos[0] - g5x[0] - g92[0] - tool[0]
+            y = pos[1] - g5x[1] - g92[1] - tool[1]
+            z = pos[2] - g5x[2] - g92[2] - tool[2]
+
+            self.w.dro_x.setText(f"{x:10.3f}")
+            self.w.dro_y.setText(f"{y:10.3f}")
+            self.w.dro_z.setText(f"{z:10.3f}")
+
+        except Exception as e:
+            # Silently ignore transient stat errors; display will retry next tick
+            pass
     
     def switch_to_manual(self):
         """Switch to MANUAL mode - Show jog controls + spindle/overrides in right panel"""
@@ -737,6 +788,15 @@ class HandlerClass:
         """Periodic status update"""
         try:
             self.stat.poll()
+
+            # — DRO: work-coordinate position update (gmoccapy formula) ——
+            # Must run on every tick so jogging, program execution, and
+            # offset changes all reflect immediately in the DRO display.
+            try:
+                self._update_dro()
+            except Exception:
+                pass
+            # — END DRO UPDATE ——————————————————————————————————————————
             
             # — ADDED: MAX AXIS VELOCITY CALCULATION —
             # Get current velocities for all joints
@@ -797,6 +857,19 @@ class HandlerClass:
         except Exception:
             pass
         # — END ADDED: TOOL INFO PANEL UPDATE —
+        # — ADDED: OFFSET TABLE LIVE REFRESH ——————————————————————————————
+        # Refresh the offset table whenever the Offset Page tab is visible.
+        # This keeps it synchronised with any source of offset changes:
+        # touch-off, MDI G10/G92, running G-code programs, or external tools.
+        # The check is cheap (one attribute read); _populate_offset_table()
+        # itself calls stat.poll() and reads the .var file only if the tab is
+        # actually being shown, so there is no overhead when the tab is hidden.
+        try:
+            if getattr(self, '_offset_tab_visible', False):
+                self._populate_offset_table()
+        except Exception:
+            pass
+        # — END ADDED: OFFSET TABLE LIVE REFRESH ——————————————————————————
     
     def is_auto_running(self):
         """Check if auto mode program is running"""
@@ -2472,37 +2545,102 @@ class HandlerClass:
 
     def setup_graphics_tabs(self):
         """
-        Wire the Preview / Offset Page tab buttons.
-        Preview  → show gcode_viewer, hide table_offsets
-        Offset Page → hide gcode_viewer, show table_offsets + populate it
-        Uses QButtonGroup for mutual exclusion.
+        Wire all five tab buttons: Preview, Offset Page, Camera, ECDM Power Supply.
+        The left content area is a QStackedWidget (stack_left_content):
+          Index 0 = Preview / Offset Page  (stack_page_preview)
+          Index 1 = Camera                 (stack_page_camera)
+          Index 2 = ECDM Power Supply      (stack_page_ecdm)
+
+        Within stack_page_preview the original gcode_viewer / table_offsets
+        show/hide logic is preserved exactly as before.
         """
         try:
             self._graphics_tab_group = QButtonGroup()
             self._graphics_tab_group.addButton(self.w.btn_tab_preview)
             self._graphics_tab_group.addButton(self.w.btn_tab_offsets)
+            self._graphics_tab_group.addButton(self.w.btn_tab_camera)
+            self._graphics_tab_group.addButton(self.w.btn_tab_ecdm)
             self._graphics_tab_group.setExclusive(True)
+
             self.w.btn_tab_preview.clicked.connect(self._show_preview_tab)
             self.w.btn_tab_offsets.clicked.connect(self._show_offsets_tab)
-            # Setup offset table columns
+            self.w.btn_tab_camera.clicked.connect(self._show_camera_tab)
+            self.w.btn_tab_ecdm.clicked.connect(self._show_ecdm_tab)
+
+            # Setup offset table columns (unchanged)
             tbl = self.w.table_offsets
             tbl.setColumnCount(4)
             tbl.setHorizontalHeaderLabels(["System", "X", "Y", "Z"])
             tbl.horizontalHeader().setStretchLastSection(True)
             tbl.verticalHeader().hide()
             tbl.verticalHeader().setDefaultSectionSize(22)
-            print("✓ Preview/Offset Page tabs connected")
+
+            # Camera state
+            self._camera_active = False
+            self._camera_cap = None
+            self._camera_timer = QTimer()
+            self._camera_timer.timeout.connect(self._update_camera_frame)
+            self._camera_crosshair = True
+            self._camera_zoom = 1.0
+
+            # Offset tab visibility flag — used by periodic_update() to decide
+            # whether to call _populate_offset_table() on every 100 ms tick.
+            self._offset_tab_visible = False
+
+            # ECDM graph state
+            self._ecdm_graph_timer = QTimer()
+            self._ecdm_graph_timer.timeout.connect(self._update_ecdm_graph)
+            self._ecdm_time_data = []
+            self._ecdm_volt_data = []
+            self._ecdm_curr_data = []
+            self._ecdm_graph_canvas = None
+
+            # Connect camera controls
+            self.w.slider_camera_zoom.valueChanged.connect(self._on_camera_zoom_changed)
+            self.w.btn_camera_reset_zoom.clicked.connect(self._on_camera_reset_zoom)
+            self.w.btn_camera_snapshot.clicked.connect(self._on_camera_snapshot)
+            self.w.btn_cam_x_zero.clicked.connect(lambda: self._cam_zero_axis('X'))
+            self.w.btn_cam_y_zero.clicked.connect(lambda: self._cam_zero_axis('Y'))
+            self.w.btn_cam_z_zero.clicked.connect(lambda: self._cam_zero_axis('Z'))
+            self.w.btn_cam_xy_zero.clicked.connect(self._cam_zero_xy)
+            self.w.btn_cam_xyz_zero.clicked.connect(self._cam_zero_xyz)
+
+            # Connect ECDM controls
+            self.w.btn_psu_output_on.clicked.connect(self._psu_output_on)
+            self.w.btn_psu_output_off.clicked.connect(self._psu_output_off)
+            self.w.btn_psu_set_v.clicked.connect(self._psu_set_voltage)
+            self.w.btn_psu_set_i.clicked.connect(self._psu_set_current)
+            self.w.btn_fg_set_freq.clicked.connect(self._fg_set_frequency)
+            self.w.btn_fg_set_wave.clicked.connect(self._fg_set_waveform)
+            self.w.btn_fg_set_ampl.clicked.connect(self._fg_set_amplitude)
+            self.w.btn_fg_set_duty.clicked.connect(self._fg_set_duty)
+            self.w.btn_fg_ch1_on.clicked.connect(self._fg_ch1_on)
+            self.w.btn_fg_ch1_off.clicked.connect(self._fg_ch1_off)
+
+            # Build the matplotlib graph inside frame_ecdm_graph
+            self._build_ecdm_graph()
+
+            print("✓ Preview/Offset/Camera/ECDM tabs connected")
         except Exception as e:
             print(f"Graphics tabs setup note: {e}")
 
+    # ─────────────────────────────────────────────────────────────────────
+    # TAB SWITCHING
+    # ─────────────────────────────────────────────────────────────────────
+
     def _show_preview_tab(self):
-        """Switch to Preview: show GCode graphics, hide offset table."""
+        """Switch to Preview: show GCode graphics on stack page 0."""
         try:
+            self._stop_camera()
+            self._stop_ecdm_graph()
+            self._offset_tab_visible = False
+            self.w.stack_left_content.setCurrentIndex(0)
             self.w.gcode_viewer.setVisible(True)
             self.w.table_offsets.setVisible(False)
             self.w.btn_tab_preview.setChecked(True)
             self.w.btn_tab_offsets.setChecked(False)
-            # Restore size policy so gcode_viewer expands
+            self.w.btn_tab_camera.setChecked(False)
+            self.w.btn_tab_ecdm.setChecked(False)
             from PyQt5.QtWidgets import QSizePolicy
             self.w.gcode_viewer.setSizePolicy(
                 QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -2511,13 +2649,18 @@ class HandlerClass:
             print(f"Preview tab note: {e}")
 
     def _show_offsets_tab(self):
-        """Switch to Offset Page: hide GCode graphics, show + populate offset table."""
+        """Switch to Offset Page: hide GCode graphics, show offset table on stack page 0."""
         try:
+            self._stop_camera()
+            self._stop_ecdm_graph()
+            self._offset_tab_visible = True
+            self.w.stack_left_content.setCurrentIndex(0)
             self.w.gcode_viewer.setVisible(False)
             self.w.table_offsets.setVisible(True)
             self.w.btn_tab_preview.setChecked(False)
             self.w.btn_tab_offsets.setChecked(True)
-            # Restore size policy so table_offsets expands
+            self.w.btn_tab_camera.setChecked(False)
+            self.w.btn_tab_ecdm.setChecked(False)
             from PyQt5.QtWidgets import QSizePolicy
             self.w.table_offsets.setSizePolicy(
                 QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -2526,12 +2669,683 @@ class HandlerClass:
         except Exception as e:
             print(f"Offsets tab note: {e}")
 
+    def _show_camera_tab(self):
+        """Switch to Camera tab: show stack page 1 and start camera."""
+        try:
+            self._stop_ecdm_graph()
+            self._offset_tab_visible = False
+            self.w.stack_left_content.setCurrentIndex(1)
+            self.w.btn_tab_preview.setChecked(False)
+            self.w.btn_tab_offsets.setChecked(False)
+            self.w.btn_tab_camera.setChecked(True)
+            self.w.btn_tab_ecdm.setChecked(False)
+            self._start_camera()
+        except Exception as e:
+            print(f"Camera tab note: {e}")
+
+    def _show_ecdm_tab(self):
+        """Switch to ECDM tab: show stack page 2 and start graph updates."""
+        try:
+            self._stop_camera()
+            self._offset_tab_visible = False
+            self.w.stack_left_content.setCurrentIndex(2)
+            self.w.btn_tab_preview.setChecked(False)
+            self.w.btn_tab_offsets.setChecked(False)
+            self.w.btn_tab_camera.setChecked(False)
+            self.w.btn_tab_ecdm.setChecked(True)
+            self._start_ecdm_graph()
+        except Exception as e:
+            print(f"ECDM tab note: {e}")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # CAMERA IMPLEMENTATION
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _start_camera(self):
+        """Open camera device 0 and start frame timer at 30 fps."""
+        if self._camera_active:
+            return
+        try:
+            import cv2
+            self._camera_cap = cv2.VideoCapture(0)
+            if self._camera_cap.isOpened():
+                self._camera_active = True
+                self._camera_timer.start(33)   # ~30 fps
+                print("✓ Camera started (device 0)")
+            else:
+                self._camera_cap = None
+                self.w.lbl_camera_feed.setText(
+                    "⚠ No camera found\n\nCheck that a USB camera is connected\nand /dev/video0 exists.")
+                print("⚠ Camera not found at device 0")
+        except ImportError:
+            self._camera_cap = None
+            self.w.lbl_camera_feed.setText(
+                "⚠ OpenCV (cv2) not installed\n\npip install opencv-python")
+            print("⚠ cv2 not available — camera feed disabled")
+        except Exception as e:
+            self._camera_cap = None
+            self.w.lbl_camera_feed.setText(f"⚠ Camera error:\n{e}")
+            print(f"Camera start error: {e}")
+
+    def _stop_camera(self):
+        """Stop camera timer and release capture."""
+        try:
+            self._camera_timer.stop()
+            if self._camera_cap is not None:
+                self._camera_cap.release()
+                self._camera_cap = None
+            self._camera_active = False
+        except Exception as e:
+            print(f"Camera stop note: {e}")
+
+    def _update_camera_frame(self):
+        """Grab a frame from the camera, apply zoom + crosshair, display in lbl_camera_feed."""
+        if not self._camera_active or self._camera_cap is None:
+            return
+        try:
+            import cv2
+            from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen
+            from PyQt5.QtCore import Qt
+
+            ret, frame = self._camera_cap.read()
+            if not ret:
+                return
+
+            # Apply digital zoom (crop centre)
+            zoom = max(1.0, self._camera_zoom)
+            if zoom > 1.0:
+                h, w = frame.shape[:2]
+                new_w = int(w / zoom)
+                new_h = int(h / zoom)
+                x1 = (w - new_w) // 2
+                y1 = (h - new_h) // 2
+                frame = frame[y1:y1 + new_h, x1:x1 + new_w]
+
+            # Convert BGR→RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = frame_rgb.shape
+            bytes_per_line = ch * w
+            qimg = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+
+            # Scale to label size keeping aspect ratio
+            label_w = self.w.lbl_camera_feed.width()
+            label_h = self.w.lbl_camera_feed.height()
+            pixmap = QPixmap.fromImage(qimg).scaled(
+                label_w, label_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+            # Draw crosshair overlay
+            if self._camera_crosshair:
+                painter = QPainter(pixmap)
+                pen = QPen(Qt.green, 2)
+                painter.setPen(pen)
+                cx = pixmap.width() // 2
+                cy = pixmap.height() // 2
+                painter.drawLine(0, cy, pixmap.width(), cy)
+                painter.drawLine(cx, 0, cx, pixmap.height())
+                # Small centre circle
+                painter.drawEllipse(cx - 15, cy - 15, 30, 30)
+                painter.end()
+
+            self.w.lbl_camera_feed.setPixmap(pixmap)
+        except Exception as e:
+            print(f"Camera frame error: {e}")
+
+    def _on_camera_zoom_changed(self, value):
+        """Slider value 1-100 maps to zoom 1.0-10.0."""
+        self._camera_zoom = 1.0 + (value - 1) * 9.0 / 99.0
+        self.w.lbl_zoom_value.setText(f"{self._camera_zoom:.1f}")
+
+    def _on_camera_reset_zoom(self):
+        """Reset zoom slider to minimum (1.0x)."""
+        self.w.slider_camera_zoom.setValue(1)
+        self._camera_zoom = 1.0
+        self.w.lbl_zoom_value.setText("1.0")
+
+    def _on_camera_snapshot(self):
+        """Save current camera frame to ~/Pictures/snapshot_<timestamp>.png."""
+        if not self._camera_active or self._camera_cap is None:
+            print("⚠ Snapshot: camera not active")
+            return
+        try:
+            import cv2
+            ret, frame = self._camera_cap.read()
+            if ret:
+                import time as _time
+                ts = _time.strftime("%Y%m%d_%H%M%S")
+                pic_dir = os.path.expanduser("~/Pictures")
+                os.makedirs(pic_dir, exist_ok=True)
+                path = os.path.join(pic_dir, f"snapshot_{ts}.png")
+                cv2.imwrite(path, frame)
+                print(f"✓ Snapshot saved: {path}")
+            else:
+                print("⚠ Snapshot: could not grab frame")
+        except Exception as e:
+            print(f"Snapshot error: {e}")
+
+    def _cam_zero_axis(self, axis):
+        """Zero a single axis from the camera tab (calls existing touch-off MDI logic)."""
+        try:
+            self._send_mdi_command(f"G10 L20 P0 {axis}0")
+            print(f"✓ Camera zero {axis}")
+        except Exception as e:
+            print(f"Cam zero {axis} error: {e}")
+
+    def _cam_zero_xy(self):
+        """Zero X and Y axes."""
+        try:
+            self._send_mdi_command("G10 L20 P0 X0 Y0")
+            print("✓ Camera zero X+Y")
+        except Exception as e:
+            print(f"Cam zero XY error: {e}")
+
+    def _cam_zero_xyz(self):
+        """Zero X, Y, and Z axes."""
+        try:
+            self._send_mdi_command("G10 L20 P0 X0 Y0 Z0")
+            print("✓ Camera zero XYZ")
+        except Exception as e:
+            print(f"Cam zero XYZ error: {e}")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # ECDM POWER SUPPLY + FUNCTION GENERATOR IMPLEMENTATION
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _build_ecdm_graph(self):
+        """
+        Embed a matplotlib FigureCanvas inside frame_ecdm_graph.
+
+        FIX 1 — matplotlib.use() must be called before the Qt5Agg backend is
+                 imported.  In QtVCP, QApplication already exists when the
+                 handler runs, so we pass force=True to suppress the "already
+                 switched" warning without raising an error.
+        FIX 2 — Figure(tight_layout=True) conflicts with twinx axes.
+                 Use subplots_adjust() instead so both Y-axis labels are visible.
+        FIX 3 — QVBoxLayout(parent) silently fails if the parent widget already
+                 carries a layout (Qt prints a warning and ignores the second
+                 call).  We delete any pre-existing layout before creating ours.
+        FIX 4 — Initialise _ecdm_graph_t0 = None here so _update_ecdm_graph()
+                 can compute relative seconds from the first data point rather
+                 than plotting raw epoch timestamps on the X axis.
+
+        Falls back gracefully to a plain QLabel if matplotlib is missing.
+        """
+        try:
+            # ── FIX 1: set backend before importing backend_qt5agg ──────
+            import matplotlib
+            matplotlib.use('Qt5Agg', force=True)
+            from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+            from matplotlib.figure import Figure
+            from PyQt5.QtWidgets import QVBoxLayout
+
+            # ── FIX 2: do NOT use tight_layout=True with twinx ──────────
+            fig = Figure(facecolor='#050d15')
+            fig.subplots_adjust(left=0.12, right=0.88, top=0.93, bottom=0.15)
+
+            self._ecdm_ax_volt = fig.add_subplot(111)
+            self._ecdm_ax_curr = self._ecdm_ax_volt.twinx()
+
+            # ── FIX 4: time-origin for relative X axis ───────────────────
+            self._ecdm_graph_t0 = None
+
+            self._style_ecdm_axes()
+
+            canvas = FigureCanvas(fig)
+            canvas.setStyleSheet("background-color: #050d15;")
+            self._ecdm_graph_canvas = canvas
+            self._ecdm_fig = fig
+
+            # ── FIX 3: clear any pre-existing layout on the frame ────────
+            old_layout = self.w.frame_ecdm_graph.layout()
+            if old_layout is not None:
+                # Drain all child widgets out of the old layout first
+                while old_layout.count():
+                    item = old_layout.takeAt(0)
+                    w = item.widget()
+                    if w is not None:
+                        w.deleteLater()
+                # Reparent the layout to a temporary widget so Qt forgets it
+                from PyQt5.QtWidgets import QWidget as _QW
+                _QW().setLayout(old_layout)
+
+            layout = QVBoxLayout(self.w.frame_ecdm_graph)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            layout.addWidget(canvas)
+            print("✓ ECDM matplotlib graph created")
+
+        except ImportError:
+            # matplotlib not installed — show friendly placeholder
+            from PyQt5.QtWidgets import QVBoxLayout, QLabel
+            from PyQt5.QtCore import Qt
+
+            lbl = QLabel(
+                "ℹ  Install matplotlib for real-time graph\n\n"
+                "Run in terminal:\n"
+                "pip3 install matplotlib"
+            )
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("color: #555555; font-size: 10pt; background: transparent;")
+
+            old_layout = self.w.frame_ecdm_graph.layout()
+            if old_layout is not None:
+                while old_layout.count():
+                    item = old_layout.takeAt(0)
+                    w = item.widget()
+                    if w is not None:
+                        w.deleteLater()
+                from PyQt5.QtWidgets import QWidget as _QW
+                _QW().setLayout(old_layout)
+
+            layout = QVBoxLayout(self.w.frame_ecdm_graph)
+            layout.addWidget(lbl)
+            print("⚠ matplotlib not available — ECDM graph disabled")
+
+        except Exception as e:
+            print(f"ECDM graph build error: {e}")
+
+    def _style_ecdm_axes(self):
+        """
+        Apply dark-theme styling to the ECDM graph axes.
+
+        FIX 5 — tick_params(colors=…) sets BOTH tick marks and tick labels.
+                 The left (voltage) ticks should be green, the right (current)
+                 ticks blue, so each axis needs its own colour call.
+                 Also set the figure patch background so the canvas edges match.
+        """
+        try:
+            ax_v = self._ecdm_ax_volt
+            ax_c = self._ecdm_ax_curr
+
+            # Common background and spine colour
+            for ax in (ax_v, ax_c):
+                ax.set_facecolor('#050d15')
+                for spine in ax.spines.values():
+                    spine.set_edgecolor('#1c5980')
+
+            # Left axis — voltage (green)
+            ax_v.tick_params(axis='both',  colors='#888888', labelsize=7)
+            ax_v.tick_params(axis='y',     colors='#00cc66', labelsize=7)
+            ax_v.set_xlabel("Time (s)",    color='#888888', fontsize=7)
+            ax_v.set_ylabel("Voltage (V)", color='#00cc66', fontsize=7)
+            ax_v.yaxis.label.set_color('#00cc66')
+            ax_v.xaxis.label.set_color('#888888')
+
+            # Right axis — current (blue)
+            ax_c.tick_params(axis='y', colors='#00aaff', labelsize=7)
+            ax_c.set_ylabel("Current (A)", color='#00aaff', fontsize=7)
+            ax_c.yaxis.label.set_color('#00aaff')
+
+            # Figure canvas background
+            try:
+                self._ecdm_fig.patch.set_facecolor('#050d15')
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _start_ecdm_graph(self):
+        """
+        Start 1-second graph update timer.
+
+        FIX 6 — Reset the time origin and clear stale data every time the
+                 ECDM tab is opened so the X axis always starts at 0 s and
+                 does not accumulate data from a previous session.
+        """
+        if self._ecdm_graph_canvas is None:
+            return
+        # Clear accumulated data and reset origin so X axis starts at 0
+        self._ecdm_time_data = []
+        self._ecdm_volt_data = []
+        self._ecdm_curr_data = []
+        self._ecdm_graph_t0 = None
+        # Reset persistent line references so _update_ecdm_graph recreates them
+        self._ecdm_line_volt = None
+        self._ecdm_line_curr = None
+        self._ecdm_graph_timer.start(1000)
+        print("✓ ECDM graph updates started")
+
+    def _stop_ecdm_graph(self):
+        """Stop graph update timer."""
+        self._ecdm_graph_timer.stop()
+
+    def _update_ecdm_graph(self):
+        """
+        Append current PSU readings and redraw the matplotlib graph.
+
+        FIX 7 — Use RELATIVE time (seconds since first sample) on the X axis
+                 instead of raw epoch timestamps.  Raw epoch values are
+                 ~1 700 000 000 which makes the axis unreadable.
+
+        FIX 8 — Replace ax.cla() + ax.plot() with persistent Line2D objects
+                 updated via line.set_data().  ax.cla() on a twinx axis
+                 destroys the shared spine linkage and resets all styling,
+                 requiring a full re-style on every tick which is slow and
+                 causes visual flicker.  Using set_data() + ax.relim() +
+                 ax.autoscale_view() is both faster and stable.
+        """
+        if self._ecdm_graph_canvas is None:
+            return
+        try:
+            import time as _time
+            now = _time.time()
+
+            # ── Establish time origin on first sample ────────────────────
+            if self._ecdm_graph_t0 is None:
+                self._ecdm_graph_t0 = now
+
+            t_rel = now - self._ecdm_graph_t0   # seconds since graph started
+
+            # ── Read PSU values from label widgets ───────────────────────
+            # Replace these reads with real serial/HAL values when hardware
+            # is connected.  The .replace() strips the unit suffix added by
+            # _psu_output_on / _psu_output_off handlers.
+            try:
+                v = float(self.w.lbl_psu_voltage.text().replace('V', '').strip())
+            except Exception:
+                v = 0.0
+            try:
+                i = float(self.w.lbl_psu_current.text().replace('A', '').strip())
+            except Exception:
+                i = 0.0
+
+            self._ecdm_time_data.append(t_rel)
+            self._ecdm_volt_data.append(v)
+            self._ecdm_curr_data.append(i)
+
+            # ── Keep a 60-second rolling window ─────────────────────────
+            cutoff = t_rel - 60.0
+            while self._ecdm_time_data and self._ecdm_time_data[0] < cutoff:
+                self._ecdm_time_data.pop(0)
+                self._ecdm_volt_data.pop(0)
+                self._ecdm_curr_data.pop(0)
+
+            ts = self._ecdm_time_data
+
+            # ── FIX 8: update persistent line objects ────────────────────
+            ax_v = self._ecdm_ax_volt
+            ax_c = self._ecdm_ax_curr
+
+            # Create the Line2D objects once; reuse on every subsequent tick
+            if not hasattr(self, '_ecdm_line_volt') or self._ecdm_line_volt is None:
+                (self._ecdm_line_volt,) = ax_v.plot(
+                    [], [], color='#00cc66', linewidth=1.5, label='Voltage (V)')
+                (self._ecdm_line_curr,) = ax_c.plot(
+                    [], [], color='#00aaff', linewidth=1.5, label='Current (A)')
+                # Legends are created once here and never recreated
+                ax_v.legend(
+                    handles=[self._ecdm_line_volt],
+                    loc='upper left', fontsize=7,
+                    facecolor='#0d1b2a', edgecolor='#1c5980',
+                    labelcolor='#00cc66')
+                ax_c.legend(
+                    handles=[self._ecdm_line_curr],
+                    loc='upper right', fontsize=7,
+                    facecolor='#0d1b2a', edgecolor='#1c5980',
+                    labelcolor='#00aaff')
+
+            # Update data in-place — no cla(), no style reset
+            self._ecdm_line_volt.set_data(ts, self._ecdm_volt_data)
+            self._ecdm_line_curr.set_data(ts, self._ecdm_curr_data)
+
+            # Rescale axes to fit new data
+            ax_v.relim()
+            ax_v.autoscale_view()
+            ax_c.relim()
+            ax_c.autoscale_view()
+
+            # Non-blocking redraw — safe to call from a QTimer slot
+            self._ecdm_graph_canvas.draw_idle()
+
+        except Exception as e:
+            print(f"ECDM graph update error: {e}")
+
+    # ── PSU button handlers ────────────────────────────────────────────
+
+    def _psu_output_on(self):
+        """Activate PSU output (stub — connect to serial/HAL as needed)."""
+        try:
+            print("PSU OUTPUT ON")
+            self.w.lbl_psu_output.setText("ON")
+            self.w.lbl_psu_output.setStyleSheet(
+                "color: #00ff88; font-size: 10pt; font-weight: bold;"
+                " background: #0a2a0a; border: 1px solid #1e8449;"
+                " border-radius: 3px; padding: 2px 6px;")
+            self.w.btn_psu_output_on.setStyleSheet(
+                "QPushButton { background-color: #27ae60; color: white;"
+                " border: 2px solid #1e8449; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            self.w.btn_psu_output_off.setStyleSheet(
+                "QPushButton { background-color: #3a1a1a; color: #aaaaaa;"
+                " border: 2px solid #5a2d2d; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            self.w.lbl_psu_status.setText("SMPS output ON")
+        except Exception as e:
+            print(f"PSU output on error: {e}")
+
+    def _psu_output_off(self):
+        """Deactivate PSU output (stub — connect to serial/HAL as needed)."""
+        try:
+            print("PSU OUTPUT OFF")
+            self.w.lbl_psu_output.setText("OFF")
+            self.w.lbl_psu_output.setStyleSheet(
+                "color: #e74c3c; font-size: 10pt; font-weight: bold;"
+                " background: #2a0a0a; border: 1px solid #943126;"
+                " border-radius: 3px; padding: 2px 6px;")
+            self.w.btn_psu_output_on.setStyleSheet(
+                "QPushButton { background-color: #1a3a1a; color: #aaaaaa;"
+                " border: 2px solid #2d5a2d; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            self.w.btn_psu_output_off.setStyleSheet(
+                "QPushButton { background-color: #c0392b; color: white;"
+                " border: 2px solid #943126; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            self.w.lbl_psu_status.setText("SMPS output OFF")
+        except Exception as e:
+            print(f"PSU output off error: {e}")
+
+    def _psu_set_voltage(self):
+        """Send voltage setpoint (stub — wire to serial port for real hardware)."""
+        try:
+            v = float(self.w.edit_psu_voltage_set.text())
+            print(f"PSU SET VOLTAGE: {v:.3f} V")
+            # TODO: send serial command to OWON SPE6103
+        except ValueError:
+            print("PSU set V: invalid value")
+
+    def _psu_set_current(self):
+        """Send current setpoint (stub)."""
+        try:
+            i = float(self.w.edit_psu_current_set.text())
+            print(f"PSU SET CURRENT: {i:.3f} A")
+            # TODO: send serial command to OWON SPE6103
+        except ValueError:
+            print("PSU set I: invalid value")
+
+    # ── Function Generator button handlers ────────────────────────────
+
+    def _fg_set_frequency(self):
+        """Set function generator frequency (stub)."""
+        try:
+            freq = float(self.w.edit_fg_frequency.text())
+            self.w.lbl_fg_freq_val.setText(f"{freq:.0f}")
+            print(f"FG SET FREQUENCY: {freq:.0f} Hz")
+            # TODO: send SCPI to UNI-T UTG932E
+        except ValueError:
+            print("FG set freq: invalid value")
+
+    def _fg_set_waveform(self):
+        """Set function generator waveform (stub)."""
+        try:
+            wave = self.w.combo_fg_waveform.currentText()
+            self.w.lbl_fg_wave_val.setText(wave)
+            print(f"FG SET WAVEFORM: {wave}")
+            # TODO: send SCPI to UNI-T UTG932E
+        except Exception as e:
+            print(f"FG set wave error: {e}")
+
+    def _fg_set_amplitude(self):
+        """Set function generator amplitude (stub)."""
+        try:
+            ampl = float(self.w.edit_fg_amplitude.text())
+            self.w.lbl_fg_amp_val.setText(f"{ampl:.3f}")
+            print(f"FG SET AMPLITUDE: {ampl:.3f} Vpp")
+            # TODO: send SCPI to UNI-T UTG932E
+        except ValueError:
+            print("FG set ampl: invalid value")
+
+    def _fg_set_duty(self):
+        """Set function generator duty cycle (stub)."""
+        try:
+            duty = float(self.w.edit_fg_duty.text())
+            self.w.lbl_fg_duty_val.setText(f"{duty:.1f}")
+            print(f"FG SET DUTY CYCLE: {duty:.1f}%")
+            # TODO: send SCPI to UNI-T UTG932E
+        except ValueError:
+            print("FG set duty: invalid value")
+
+    def _fg_ch1_on(self):
+        """Enable CH1 output (stub)."""
+        try:
+            print("FG CH1 ON")
+            self.w.lbl_fg_out_val.setText("ON")
+            self.w.lbl_fg_out_val.setStyleSheet(
+                "color: #00ff88; background: #0a2a0a; border: 1px solid #1e8449;"
+                " border-radius: 3px; padding: 2px 4px; font-weight: bold;")
+            self.w.btn_fg_ch1_on.setStyleSheet(
+                "QPushButton { background-color: #27ae60; color: white;"
+                " border: 2px solid #1e8449; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            self.w.btn_fg_ch1_off.setStyleSheet(
+                "QPushButton { background-color: #3a1a1a; color: #aaaaaa;"
+                " border: 2px solid #5a2d2d; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            # TODO: send SCPI to UNI-T UTG932E
+        except Exception as e:
+            print(f"FG CH1 on error: {e}")
+
+    def _fg_ch1_off(self):
+        """Disable CH1 output (stub)."""
+        try:
+            print("FG CH1 OFF")
+            self.w.lbl_fg_out_val.setText("OFF")
+            self.w.lbl_fg_out_val.setStyleSheet(
+                "color: #e74c3c; background: #2a0a0a; border: 1px solid #943126;"
+                " border-radius: 3px; padding: 2px 4px; font-weight: bold;")
+            self.w.btn_fg_ch1_on.setStyleSheet(
+                "QPushButton { background-color: #1a3a1a; color: #aaaaaa;"
+                " border: 2px solid #2d5a2d; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            self.w.btn_fg_ch1_off.setStyleSheet(
+                "QPushButton { background-color: #c0392b; color: white;"
+                " border: 2px solid #943126; font-weight: bold;"
+                " border-radius: 4px; font-size: 9pt; }"
+                "QPushButton:hover { border-color: #fff; }")
+            # TODO: send SCPI to UNI-T UTG932E
+        except Exception as e:
+            print(f"FG CH1 off error: {e}")
+
+    def _resolve_var_file(self):
+        """
+        Resolve the path to the RS274NGC parameter (.var) file.
+
+        The .var file stores ALL work coordinate offsets for G54–G59.3 and G92
+        using standard parameter numbers (e.g. #5221=G54 X, #5241=G55 X …).
+        It is the only reliable source for the full 9-system offset table because
+        stat.g5x_offset (singular) only carries the ACTIVE system's offset, and
+        stat.g5x_offsets (plural) DOES NOT EXIST in the LinuxCNC stat object —
+        calling getattr(stat, 'g5x_offsets', []) silently returns [] every time.
+
+        Resolution order (same as tool-table path resolution used elsewhere):
+          1. INI_FILE_NAME environment variable  (always set by LinuxCNC at startup)
+          2. INFO.INI_FILENAME fallback
+          3. PARAMETER_FILE value is resolved relative to the INI directory.
+        """
+        try:
+            ini_file = os.environ.get('INI_FILE_NAME', '')
+            if not ini_file:
+                try:
+                    ini_file = INFO.INI_FILENAME or ''
+                except Exception:
+                    ini_file = ''
+            if not ini_file or not os.path.isfile(ini_file):
+                return None
+            ini_obj = linuxcnc.ini(ini_file)
+            raw = ini_obj.find('RS274NGC', 'PARAMETER_FILE') or ''
+            if not raw:
+                return None
+            if os.path.isabs(raw):
+                candidate = raw
+            else:
+                ini_dir = os.path.dirname(os.path.abspath(ini_file))
+                candidate = os.path.join(ini_dir, raw)
+            return candidate if os.path.isfile(candidate) else None
+        except Exception as e:
+            print(f"_resolve_var_file error: {e}")
+            return None
+
+    def _read_var_file(self, var_path):
+        """
+        Parse the RS274NGC .var parameter file and return a dict {param_num: float}.
+        The file format is one  '<number> <value>'  pair per line.
+        Lines starting with '#' or blank are skipped.
+        """
+        params = {}
+        try:
+            with open(var_path, 'r') as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            params[int(parts[0])] = float(parts[1])
+                        except ValueError:
+                            pass
+        except Exception as e:
+            print(f"_read_var_file error ({var_path}): {e}")
+        return params
+
     def _populate_offset_table(self):
         """
-        Read work coordinate offsets from stat.g5x_offsets + stat.g92_offset
-        and fill table_offsets.
-        g5x_offsets is a list of 9 coordinate systems: index 0=G54, 1=G55...8=G59.3
-        Each entry is a tuple of (X, Y, Z, A, B, C, U, V, W).
+        Read ALL work coordinate offsets (G54–G59.3 + G92) and fill table_offsets.
+
+        ROOT CAUSE OF THE BUG (now fixed):
+            The previous implementation used:
+                offsets = getattr(self.stat, 'g5x_offsets', [])
+            BUT stat.g5x_offsets DOES NOT EXIST in the LinuxCNC stat object.
+            getattr() returned [] silently, so every row always showed 0.0000
+            regardless of what the machine was actually configured to.
+
+        CORRECT DATA SOURCE — two-tier approach:
+          Tier 1 (all 9 systems)  — RS274NGC .var parameter file.
+              Standard parameter numbers:
+                G54  X=#5221  Y=#5222  Z=#5223
+                G55  X=#5241  Y=#5242  Z=#5243
+                G56  X=#5261  Y=#5262  Z=#5263
+                G57  X=#5281  Y=#5282  Z=#5283
+                G58  X=#5301  Y=#5302  Z=#5303
+                G59  X=#5321  Y=#5322  Z=#5323
+                G59.1 X=#5341 Y=#5342  Z=#5343
+                G59.2 X=#5361 Y=#5362  Z=#5363
+                G59.3 X=#5381 Y=#5382  Z=#5383
+                G92   X=#5211 Y=#5212  Z=#5213
+
+          Tier 2 (active system + G92 live values) — stat.g5x_offset and
+              stat.g92_offset.  These are polled every call so the active
+              row always reflects the most current controller state, even
+              before LinuxCNC has flushed the change to disk.
+
+          The active system row is overridden with the live stat values so
+          that a touch-off performed just before opening the table is visible
+          immediately without waiting for the .var file to be written.
         """
         try:
             self.stat.poll()
@@ -2539,51 +3353,82 @@ class HandlerClass:
             tbl.blockSignals(True)
             tbl.setRowCount(0)
 
-            coord_names = ['G54', 'G55', 'G56', 'G57', 'G58', 'G59',
-                           'G59.1', 'G59.2', 'G59.3']
-            # Current active system index (0-based)
-            active_idx = getattr(self.stat, 'g5x_index', 0)
-            if active_idx > 0:
-                active_idx -= 1  # stat uses 1-based for g5x_index
+            # ── RS274NGC parameter numbers for XYZ of each G5x system ────
+            # Each tuple is (X_param, Y_param, Z_param)
+            COORD_PARAMS = [
+                ('G54',   5221, 5222, 5223),
+                ('G55',   5241, 5242, 5243),
+                ('G56',   5261, 5262, 5263),
+                ('G57',   5281, 5282, 5283),
+                ('G58',   5301, 5302, 5303),
+                ('G59',   5321, 5322, 5323),
+                ('G59.1', 5341, 5342, 5343),
+                ('G59.2', 5361, 5362, 5363),
+                ('G59.3', 5381, 5382, 5383),
+            ]
 
-            offsets = getattr(self.stat, 'g5x_offsets', [])
-            for i, name in enumerate(coord_names):
-                if i < len(offsets):
-                    off = offsets[i]
-                else:
-                    off = (0.0, 0.0, 0.0)
-                row = tbl.rowCount()
-                tbl.insertRow(row)
-                # Mark active coord system
-                display_name = f"► {name}" if i == active_idx else name
-                from PyQt5.QtWidgets import QTableWidgetItem
-                from PyQt5.QtGui import QColor
-                items = [
-                    QTableWidgetItem(display_name),
-                    QTableWidgetItem(f"{off[0]:.4f}"),
-                    QTableWidgetItem(f"{off[1]:.4f}"),
-                    QTableWidgetItem(f"{off[2]:.4f}"),
-                ]
-                for col, item in enumerate(items):
-                    if i == active_idx:
-                        item.setForeground(QColor('#00e676'))
-                    tbl.setItem(row, col, item)
+            # ── Read .var file for all 9 systems ─────────────────────────
+            var_path = self._resolve_var_file()
+            params = self._read_var_file(var_path) if var_path else {}
 
-            # Add G92 row
-            g92 = getattr(self.stat, 'g92_offset', (0.0, 0.0, 0.0))
-            row = tbl.rowCount()
-            tbl.insertRow(row)
+            # ── Active system index (stat uses 1-based: 1=G54 … 9=G59.3) ─
+            active_stat_idx = getattr(self.stat, 'g5x_index', 1)  # 1-based
+            active_row_idx  = max(0, active_stat_idx - 1)          # 0-based
+
+            # ── Live values for the ACTIVE system from stat ───────────────
+            # stat.g5x_offset is valid and always returns the active system.
+            live_active = tuple(getattr(self.stat, 'g5x_offset', (0.0,) * 9))
+
+            # ── Populate G54–G59.3 rows ───────────────────────────────────
             from PyQt5.QtWidgets import QTableWidgetItem
             from PyQt5.QtGui import QColor
+
+            for row_idx, (name, px, py, pz) in enumerate(COORD_PARAMS):
+                is_active = (row_idx == active_row_idx)
+
+                if is_active:
+                    # Live stat values for the currently active system —
+                    # guaranteed up-to-date even before .var is flushed.
+                    x = live_active[0]
+                    y = live_active[1]
+                    z = live_active[2]
+                else:
+                    # All other systems must come from the .var file.
+                    x = params.get(px, 0.0)
+                    y = params.get(py, 0.0)
+                    z = params.get(pz, 0.0)
+
+                tbl.insertRow(row_idx)
+                display_name = f"► {name}" if is_active else name
+                values = [display_name, f"{x:.4f}", f"{y:.4f}", f"{z:.4f}"]
+                for col, val in enumerate(values):
+                    item = QTableWidgetItem(val)
+                    if is_active:
+                        item.setForeground(QColor('#00e676'))
+                    tbl.setItem(row_idx, col, item)
+
+            # ── G92 row ───────────────────────────────────────────────────
+            # stat.g92_offset is always live and correct.
+            g92 = tuple(getattr(self.stat, 'g92_offset', (0.0,) * 9))
+            # Also cross-check with .var params #5211–#5213
+            g92x = g92[0] if g92[0] != 0.0 else params.get(5211, 0.0)
+            g92y = g92[1] if g92[1] != 0.0 else params.get(5212, 0.0)
+            g92z = g92[2] if g92[2] != 0.0 else params.get(5213, 0.0)
+            # Use stat as primary (it is always live after a poll)
+            g92x, g92y, g92z = g92[0], g92[1], g92[2]
+
+            g92_row = len(COORD_PARAMS)
+            tbl.insertRow(g92_row)
             for col, val in enumerate(['G92',
-                                       f"{g92[0]:.4f}",
-                                       f"{g92[1]:.4f}",
-                                       f"{g92[2]:.4f}"]):
+                                       f"{g92x:.4f}",
+                                       f"{g92y:.4f}",
+                                       f"{g92z:.4f}"]):
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor('#f39c12'))
-                tbl.setItem(row, col, item)
+                tbl.setItem(g92_row, col, item)
 
             tbl.blockSignals(False)
+
         except Exception as e:
             print(f"Offset table populate error: {e}")
             try:
@@ -2619,10 +3464,12 @@ class HandlerClass:
             except Exception:
                 pass
 
-            # FIX 3 — Hide Preview / Offset tab buttons by default
+            # FIX 3 — Hide Preview / Offset / Camera / ECDM tab buttons by default
             try:
                 self.w.btn_tab_preview.setVisible(False)
                 self.w.btn_tab_offsets.setVisible(False)
+                self.w.btn_tab_camera.setVisible(False)
+                self.w.btn_tab_ecdm.setVisible(False)
             except Exception:
                 pass
 
@@ -2635,13 +3482,15 @@ class HandlerClass:
             print(f"Touch-off setup note: {e}")
 
     def _toggle_touchoff_buttons(self):
-        """Show/hide the axis button row and Preview/Offset buttons when TOUCH OFF is toggled."""
+        """Show/hide the axis button row and Preview/Offset/Camera/ECDM buttons when TOUCH OFF is toggled."""
         try:
             visible = self.w.btn_touch_off.isChecked()
             self.w.frame_touchoff_buttons.setVisible(visible)
-            # FIX 3 — show/hide Preview and Offset tab buttons with Touch Off
+            # FIX 3 — show/hide all four tab buttons with Touch Off
             self.w.btn_tab_preview.setVisible(visible)
             self.w.btn_tab_offsets.setVisible(visible)
+            self.w.btn_tab_camera.setVisible(visible)
+            self.w.btn_tab_ecdm.setVisible(visible)
         except Exception as e:
             print(f"Touch-off toggle note: {e}")
 
@@ -2659,9 +3508,11 @@ class HandlerClass:
             self.w.btn_touch_off.setChecked(False)
             self.w.frame_touchoff_buttons.setVisible(False)
             self.w.btn_touch_off.setVisible(False)
-            # FIX 3 — also hide Preview/Offset buttons
+            # FIX 3 — also hide all four tab buttons
             self.w.btn_tab_preview.setVisible(False)
             self.w.btn_tab_offsets.setVisible(False)
+            self.w.btn_tab_camera.setVisible(False)
+            self.w.btn_tab_ecdm.setVisible(False)
         except Exception as e:
             print(f"hide touch off (MDI) note: {e}")
 
@@ -2671,154 +3522,117 @@ class HandlerClass:
             self.w.btn_touch_off.setChecked(False)
             self.w.frame_touchoff_buttons.setVisible(False)
             self.w.btn_touch_off.setVisible(False)
-            # FIX 3 — also hide Preview/Offset buttons
+            # FIX 3 — also hide all four tab buttons
             self.w.btn_tab_preview.setVisible(False)
             self.w.btn_tab_offsets.setVisible(False)
+            self.w.btn_tab_camera.setVisible(False)
+            self.w.btn_tab_ecdm.setVisible(False)
         except Exception as e:
             print(f"hide touch off (AUTO) note: {e}")
     # ── END FIX 2/3 ───────────────────────────────────────────────────────
 
     def _touchoff_axis_keypad(self, axis):
         """
-        Open a numeric keypad dialog for the given axis.
-        On OK: apply the entered value as a work offset on the active G5x system.
-        Uses ACTION.SET_AXIS_ORIGIN which issues the correct G10 L20 command
-        against the currently active coordinate system — never hardcodes G54.
+        Touch-off: user enters the value they want the DRO to show at current
+        machine position.  Computes and stores the correct G5x offset via G10 L2.
+        Uses self.command directly on the main thread — same as execute_mdi().
         """
         axis_upper = axis.upper()
         self._touchoff_axis = axis_upper
-
-        # Map axis letter to position index for current position display
         axis_idx = {'X': 0, 'Y': 1, 'Z': 2}.get(axis_upper, 0)
 
-        # Get current relative position for this axis
+        # Current displayed (relative) value — shown as default in keypad
         try:
             self.stat.poll()
-            pos = self.stat.position
-            g5x = getattr(self.stat, 'g5x_offset', (0,) * 9)
-            g92 = getattr(self.stat, 'g92_offset', (0,) * 9)
-            tool_off = getattr(self.stat, 'tool_offset', (0,) * 9)
-            current_val = (pos[axis_idx]
-                           - g5x[axis_idx]
-                           - g92[axis_idx]
-                           - tool_off[axis_idx])
+            pos      = self.stat.position
+            g5x      = list(getattr(self.stat, 'g5x_offset', [0]*9))
+            g92      = list(getattr(self.stat, 'g92_offset',  [0]*9))
+            tool_off = list(getattr(self.stat, 'tool_offset',  [0]*9))
+            current_disp = pos[axis_idx] - g5x[axis_idx] - g92[axis_idx] - tool_off[axis_idx]
         except Exception:
-            current_val = 0.0
+            current_disp = 0.0
 
-        # Build simple numeric input dialog (Gmoccapy-style)
-        value, ok = self._numeric_keypad_dialog(
+        desired, ok = self._numeric_keypad_dialog(
             title=f"Set axis {axis_upper} to:",
-            current_value=current_val
+            current_value=current_disp
         )
         if not ok:
             return
 
-        # Capture values for the deferred callback closure
-        _axis = axis_upper
-        _value = value
+        # Re-poll after dialog closes — machine may have moved
+        try:
+            self.stat.poll()
+            machine_pos = self.stat.position[axis_idx]
+            g92_val     = list(getattr(self.stat, 'g92_offset', [0]*9))[axis_idx]
+            tool_val    = list(getattr(self.stat, 'tool_offset', [0]*9))[axis_idx]
+            g5x_index   = max(1, getattr(self.stat, 'g5x_index', 1))
+        except Exception:
+            machine_pos = 0.0; g92_val = 0.0; tool_val = 0.0; g5x_index = 1
 
-        def _apply_touchoff():
-            """
-            Runs on the main thread after the dialog has closed.
-            Uses the exact same sequence as execute_mdi() which is proven
-            to work — same linuxcnc.command() object, same blocking pattern,
-            same main-thread context.  QTimer.singleShot(0) defers execution
-            until Qt has finished closing the dialog, preventing any
-            event-loop re-entrancy issues.
-            """
-            try:
-                if not STATUS.machine_is_on():
-                    print("Touch off skipped: machine is OFF")
-                    return
+        # G10 L2 Pn Xval  — sets the absolute work offset directly.
+        # Formula: new_offset = machine_pos - g92 - tool_offset - desired_display
+        new_offset = machine_pos - g92_val - tool_val - desired
+        gcode = f"G10 L2 P{g5x_index} {axis_upper}{new_offset:.6f}"
+        print(f"Touch-off {axis_upper}: machine={machine_pos:.4f} desired={desired:.4f} "
+              f"→ offset={new_offset:.4f}  [{gcode}]")
 
-                self.stat.poll()
-                g5x_index = getattr(self.stat, 'g5x_index', 1)
-                p_num = max(1, g5x_index)
-                gcode = f"G10 L20 P{p_num} {_axis}{_value:.4f}"
-                print(f"→ Touch off applying: {gcode}")
-
-                # ── Step 1: Abort if interpreter busy ─────────────────────
-                self.stat.poll()
-                if self.stat.interp_state != linuxcnc.INTERP_IDLE:
-                    self.command.abort()
-                    deadline = time.time() + 2.0
-                    while time.time() < deadline:
-                        self.stat.poll()
-                        if self.stat.interp_state == linuxcnc.INTERP_IDLE:
-                            break
-                        time.sleep(0.02)
-
-                # ── Step 2: Switch to MDI ─────────────────────────────────
-                self.command.mode(linuxcnc.MODE_MDI)
-                rc = self.command.wait_complete(3.0)
-                if rc == linuxcnc.RCS_ERROR:
-                    print("✗ Touch off: mode switch RCS_ERROR")
-                    return
-
-                # ── Step 3: Confirm MDI mode ──────────────────────────────
-                deadline = time.time() + 0.5
-                while time.time() < deadline:
-                    self.stat.poll()
-                    if self.stat.task_mode == linuxcnc.MODE_MDI:
-                        break
-                    time.sleep(0.02)
-                if self.stat.task_mode != linuxcnc.MODE_MDI:
-                    print("✗ Touch off: failed to enter MDI mode")
-                    return
-
-                # ── Step 4: Confirm interpreter idle ─────────────────────
-                deadline = time.time() + 1.0
+        # --- Execute via self.command (the one correct socket) ---
+        try:
+            self.stat.poll()
+            if self.stat.interp_state != linuxcnc.INTERP_IDLE:
+                self.command.abort()
+                deadline = time.time() + 2.0
                 while time.time() < deadline:
                     self.stat.poll()
                     if self.stat.interp_state == linuxcnc.INTERP_IDLE:
                         break
                     time.sleep(0.02)
 
-                # ── Step 5: Drain stale errors ────────────────────────────
-                try:
-                    _ec = linuxcnc.error_channel()
-                    while _ec.poll():
-                        pass
-                except Exception:
-                    pass
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete(3.0)
 
-                # ── Step 6: Send G10 L20 ─────────────────────────────────
-                self.command.mdi(gcode)
-                self.command.wait_complete(10.0)
+            deadline = time.time() + 0.5
+            while time.time() < deadline:
                 self.stat.poll()
+                if self.stat.task_mode == linuxcnc.MODE_MDI:
+                    break
+                time.sleep(0.02)
 
-                # ── Step 7: Return to MANUAL ──────────────────────────────
-                self.command.mode(linuxcnc.MODE_MANUAL)
-                self.command.wait_complete(2.0)
+            deadline = time.time() + 1.0
+            while time.time() < deadline:
                 self.stat.poll()
+                if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                    break
+                time.sleep(0.02)
 
-                print(f"✓ Touch off {_axis} → {_value:.4f} (G10 L20 P{p_num})")
+            try:
+                ec = linuxcnc.error_channel()
+                while ec.poll():
+                    pass
+            except Exception:
+                pass
 
-                # ── Step 8: Force full display refresh ────────────────────
-                try:
-                    STATUS.emit('reload-display')
-                except Exception:
-                    pass
-                try:
-                    STATUS.emit('update-machine-log')
-                except Exception:
-                    pass
-                try:
-                    if hasattr(self.w, 'gcode_viewer') and self.w.gcode_viewer.isVisible():
-                        self.w.gcode_viewer.updateGL()
-                except Exception:
-                    pass
-                try:
-                    if self.w.table_offsets.isVisible():
-                        self._populate_offset_table()
-                except Exception:
-                    pass
+            self.command.mdi(gcode)
+            self.command.wait_complete(10.0)
+            self.stat.poll()
 
-            except Exception as e:
-                print(f"✗ Touch off apply error: {e}")
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self.command.wait_complete(2.0)
+            self.stat.poll()
 
-        # Defer by 0 ms — lets Qt close the dialog before executing
-        QTimer.singleShot(0, _apply_touchoff)
+            print(f"✓ Touch-off done")
+
+        except Exception as e:
+            print(f"✗ Touch-off MDI error: {e}")
+
+        # Always refresh offset table regardless of which tab is visible
+        self._populate_offset_table()
+        # Immediately update DRO — don't wait for next 100 ms periodic tick
+        try:
+            self.stat.poll()
+            self._update_dro()
+        except Exception:
+            pass
 
     def _touchoff_g92(self):
         """
@@ -2848,8 +3662,13 @@ class HandlerClass:
             gcode = f"G92 {axis}{value:.4f}"
             self._send_mdi_command(gcode)
             print(f"✓ G92 {axis} → {value:.4f}")
-            if self.w.table_offsets.isVisible():
-                self._populate_offset_table()
+            self._populate_offset_table()
+            # Immediately update DRO — don't wait for next 100 ms periodic tick
+            try:
+                self.stat.poll()
+                self._update_dro()
+            except Exception:
+                pass
         except Exception as e:
             print(f"G92 apply error: {e}")
 
@@ -2864,9 +3683,8 @@ class HandlerClass:
 
         try:
             self.stat.poll()
-            # g5x_index: 0=G53 machine, 1=G54, 2=G55...
             g5x_index = getattr(self.stat, 'g5x_index', 1)
-            p_num = max(1, g5x_index)   # P number for G10 L2
+            p_num = max(1, g5x_index)
             pos = self.stat.position
             current_val = pos[axis_idx]
         except Exception:
@@ -2884,8 +3702,13 @@ class HandlerClass:
             gcode = f"G10 L2 P{p_num} {axis}{value:.4f}"
             self._send_mdi_command(gcode)
             print(f"✓ SET SELECTED {axis} → {value:.4f}  (G10 L2 P{p_num})")
-            if self.w.table_offsets.isVisible():
-                self._populate_offset_table()
+            self._populate_offset_table()
+            # Immediately update DRO — don't wait for next 100 ms periodic tick
+            try:
+                self.stat.poll()
+                self._update_dro()
+            except Exception:
+                pass
         except Exception as e:
             print(f"Set selected apply error: {e}")
 
@@ -2982,109 +3805,56 @@ class HandlerClass:
         return 0.0, False
 
     def _send_mdi_command(self, gcode_command, on_complete=None):
-        """
-        Send a single MDI command off the Qt main thread using QThread so the
-        event loop is never blocked (blocking wait_complete on the main thread
-        deadlocks LinuxCNC's task loop, causing the silent no-op bug).
+        """Send MDI using self.command on the main thread — same socket as execute_mdi."""
+        try:
+            self.stat.poll()
+            if self.stat.interp_state != linuxcnc.INTERP_IDLE:
+                self.command.abort()
+                deadline = time.time() + 2.0
+                while time.time() < deadline:
+                    self.stat.poll()
+                    if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                        break
+                    time.sleep(0.02)
 
-        on_complete: optional callable — invoked on the main thread after the
-        command finishes (use this for DRO / offset-table refresh).
-        """
-        from PyQt5.QtCore import QThread, pyqtSignal, QObject
-        import linuxcnc as _lc
-        import time as _t
+            self.command.mode(linuxcnc.MODE_MDI)
+            self.command.wait_complete(3.0)
 
-        class _MdiWorker(QThread):
-            finished = pyqtSignal(bool, str)   # (success, error_msg)
-
-            def __init__(self, cmd):
-                super().__init__()
-                self._cmd = cmd
-
-            def run(self):
-                try:
-                    _cmd_obj = linuxcnc.command()
-                    _stat_obj = linuxcnc.stat()
-
-                    # Wait for interpreter idle (max 3 s)
-                    deadline = _t.time() + 3.0
-                    while _t.time() < deadline:
-                        _stat_obj.poll()
-                        if _stat_obj.interp_state == _lc.INTERP_IDLE:
-                            break
-                        _t.sleep(0.02)
-
-                    _cmd_obj.mode(_lc.MODE_MDI)
-                    _cmd_obj.wait_complete(3.0)
-
-                    # Wait for MODE_MDI to be confirmed (max 1 s)
-                    deadline = _t.time() + 1.0
-                    while _t.time() < deadline:
-                        _stat_obj.poll()
-                        if _stat_obj.task_mode == _lc.MODE_MDI:
-                            break
-                        _t.sleep(0.02)
-
-                    _cmd_obj.mdi(self._cmd)
-                    _cmd_obj.wait_complete(10.0)
-                    _stat_obj.poll()
-
-                    _cmd_obj.mode(_lc.MODE_MANUAL)
-                    _cmd_obj.wait_complete(2.0)
-
-                    self.finished.emit(True, '')
-                except Exception as exc:
-                    self.finished.emit(False, str(exc))
-
-        worker = _MdiWorker(gcode_command)
-
-        def _on_done(success, err):
-            if success:
-                print(f"✓ MDI done: {gcode_command}")
-            else:
-                print(f"✗ MDI error ({gcode_command}): {err}")
-            # Always refresh display on completion
-            try:
+            deadline = time.time() + 0.5
+            while time.time() < deadline:
                 self.stat.poll()
-            except Exception:
-                pass
+                if self.stat.task_mode == linuxcnc.MODE_MDI:
+                    break
+                time.sleep(0.02)
+
+            deadline = time.time() + 1.0
+            while time.time() < deadline:
+                self.stat.poll()
+                if self.stat.interp_state == linuxcnc.INTERP_IDLE:
+                    break
+                time.sleep(0.02)
+
             try:
-                STATUS.emit('reload-display')
-            except Exception:
-                pass
-            try:
-                STATUS.emit('update-machine-log')
-            except Exception:
-                pass
-            try:
-                if hasattr(self.w, 'gcode_viewer') and self.w.gcode_viewer.isVisible():
-                    self.w.gcode_viewer.updateGL()
-            except Exception:
-                pass
-            try:
-                if self.w.table_offsets.isVisible():
-                    self._populate_offset_table()
-            except Exception:
-                pass
-            if callable(on_complete):
-                try:
-                    on_complete()
-                except Exception:
+                ec = linuxcnc.error_channel()
+                while ec.poll():
                     pass
-            # Keep reference alive until thread finishes
-            try:
-                self._mdi_workers.discard(worker)
             except Exception:
                 pass
 
-        worker.finished.connect(_on_done)
+            self.command.mdi(gcode_command)
+            self.command.wait_complete(10.0)
+            self.stat.poll()
 
-        # Keep a reference so the thread isn't garbage-collected mid-run
-        if not hasattr(self, '_mdi_workers'):
-            self._mdi_workers = set()
-        self._mdi_workers.add(worker)
+            self.command.mode(linuxcnc.MODE_MANUAL)
+            self.command.wait_complete(2.0)
+            self.stat.poll()
 
-        worker.start()
+            print(f"✓ MDI done: {gcode_command}")
+            if callable(on_complete):
+                on_complete()
+
+        except Exception as e:
+            print(f"✗ _send_mdi_command error ({gcode_command}): {e}")
 
     # ═══════════════════════════════════════════════════════════════════════
     # — END ADDED: TOUCH-OFF SECTION —
