@@ -4,7 +4,7 @@ QtVCP Panel Handler - Mode-Based Visibility Control
 Version: 6.2 - ADDED MAX AXIS VELOCITY DISPLAY IN DRO
 """
 
-from PyQt5.QtCore import Qt, QTimer, QObject, QEvent, QRect
+from PyQt5.QtCore import Qt, QTimer, QObject, QEvent, QRect, QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QMenu, QTableWidgetItem, QMessageBox, QAbstractItemView, QApplication, QSizePolicy
 from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor, QKeySequence
 
@@ -24,6 +24,298 @@ import math
 STATUS = Status()
 ACTION = Action()
 INFO = Info()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# PSU SCPI WORKER
+# ───────────────────────────────────────────────────────────────────────────────
+# Architecture: plain Python class (NOT QObject) + threading.Thread.
+#
+# WHY NO QObject / pyqtSignal
+# ────────────────────────────
+# On Raspberry Pi PyQt5 builds, emitting a pyqtSignal from a plain
+# threading.Thread on a QObject that was never moved to a QThread is
+# unreliable: signals are silently dropped or raise internal Qt errors
+# that kill the worker thread without any visible traceback.
+#
+# Solution: the worker thread pushes results into a thread-safe
+# collections.deque (the "result queue"). A QTimer on the GUI thread
+# drains that deque every 200 ms and calls the handler callbacks directly.
+# This is 100% reliable on all PyQt5 / RPi builds — zero Qt thread-affinity
+# concerns because the QTimer and all Qt calls stay on the GUI thread.
+#
+# Communication model
+# ───────────────────
+#   GUI  → Worker : _cmd_queue  (list protected by _cmd_lock)
+#   Worker → GUI  : _result_queue (collections.deque, thread-safe append/popleft)
+#
+# Each item pushed onto _result_queue is a tuple:
+#   ('measurement', v, i, p)
+#   ('setpoint',    v_set, i_set)
+#   ('output',      bool)
+#   ('connection',  bool)
+# ═══════════════════════════════════════════════════════════════════════════════
+class PsuWorker:
+    """
+    SCPI communication worker for the OWON SPE6103 power supply.
+
+    Plain Python class — no QObject, no pyqtSignal.
+    Results are pushed to _result_queue; HandlerClass drains it via QTimer.
+
+    Timing matched exactly to the confirmed-working test script:
+        ser = serial.Serial(port, 115200, timeout=2)
+        time.sleep(2)
+        ser.write(b"*IDN?\r\n")
+        response = ser.readline()
+    """
+
+    # ── Hardware / timing constants ───────────────────────────────────────
+    BAUD              = 115200      # OWON SPE6103 baud rate
+    TERM              = b'\r\n'     # SCPI terminator (CR+LF)
+    TIMEOUT           = 2.0         # serial timeout — matches test script timeout=2
+    SETTLE_S          = 2.0         # post-open settle — matches test script time.sleep(2)
+    POLL_INTERVAL_S   = 0.5         # seconds between poll cycles
+    RECONNECT_DELAY_S = 5.0         # seconds between connection attempts
+    INTER_CMD_SLEEP   = 0.1         # seconds between queued commands
+    IDN_KEYS          = ('OWON', 'SPE6103')
+
+    def __init__(self, preferred_port='/dev/ttyUSB0'):
+        import threading, collections
+        self._preferred_port = preferred_port or '/dev/ttyUSB0'
+        self._serial         = None
+        self._active_port    = None
+        self._stop_event     = threading.Event()
+        self._thread         = threading.Thread(
+            target=self._run, name='PsuScpiWorker', daemon=True)
+        self._cmd_lock       = threading.Lock()
+        self._cmd_queue      = []
+        # Results from worker → GUI (thread-safe: worker appends, GUI popleft)
+        self._result_queue   = collections.deque()
+
+    # ── Public API (called from GUI thread) ──────────────────────────────
+
+    def start(self):
+        """Start the background worker thread."""
+        self._stop_event.clear()
+        self._thread.start()
+        print("✓ PsuWorker thread started (callback-queue architecture)")
+
+    def stop(self):
+        """Stop the worker thread and close the serial port."""
+        self._stop_event.set()
+        self._thread.join(timeout=6.0)
+        self._close_port()
+        print("✓ PsuWorker thread stopped")
+
+    def enqueue_command(self, scpi: str):
+        """Thread-safe: queue a SCPI command to be sent on the next poll cycle."""
+        with self._cmd_lock:
+            self._cmd_queue.append(scpi)
+
+    def drain_results(self):
+        """
+        Called from the GUI thread (via QTimer).
+        Returns list of all pending result tuples and clears the queue.
+        Never blocks.
+        """
+        results = []
+        try:
+            while True:
+                results.append(self._result_queue.popleft())
+        except IndexError:
+            pass
+        return results
+
+    # ── Worker thread ─────────────────────────────────────────────────────
+
+    def _run(self):
+        import time as _t
+
+        connected   = False
+        last_failed = 0.0
+
+        while not self._stop_event.is_set():
+
+            # ── Phase 1: connect ─────────────────────────────────────────
+            if not connected:
+                now = _t.time()
+                if now - last_failed < self.RECONNECT_DELAY_S:
+                    self._stop_event.wait(
+                        min(0.25, self.RECONNECT_DELAY_S - (now - last_failed)))
+                    continue
+                connected = self._do_connect()
+                if not connected:
+                    last_failed = _t.time()
+                continue
+
+            # ── Phase 2: poll ────────────────────────────────────────────
+            try:
+                # Drain outgoing command queue first
+                with self._cmd_lock:
+                    pending = list(self._cmd_queue)
+                    self._cmd_queue.clear()
+                for cmd in pending:
+                    self._send(cmd)
+                    _t.sleep(self.INTER_CMD_SLEEP)
+
+                # Read live measurements
+                v_meas = self._parse_float(self._query('MEAS:VOLT?'))
+                i_meas = self._parse_float(self._query('MEAS:CURR?'))
+                p_meas = v_meas * i_meas
+                self._result_queue.append(('measurement', v_meas, i_meas, p_meas))
+
+                # Read setpoints (detect front-panel changes)
+                v_set = self._parse_float(self._query('VOLT?'))
+                i_set = self._parse_float(self._query('CURR?'))
+                self._result_queue.append(('setpoint', v_set, i_set))
+
+                # Read output state
+                out_raw   = self._query('OUTP?').upper()
+                output_on = out_raw in ('ON', '1')
+                self._result_queue.append(('output', output_on))
+
+            except Exception as exc:
+                print(f"⚠ PSU poll error: {exc}")
+                self._close_port()
+                connected   = False
+                last_failed = _t.time()
+                self._result_queue.append(('connection', False))
+                continue
+
+            self._stop_event.wait(self.POLL_INTERVAL_S)
+
+        self._close_port()
+
+    # ── Connection / port scanning ────────────────────────────────────────
+
+    def _do_connect(self) -> bool:
+        self._close_port()
+        ports = self._candidate_ports()
+        print(f"PSU scan: probing {len(ports)} port(s): {ports}")
+
+        for port in ports:
+            if self._stop_event.is_set():
+                return False
+            if self._probe_port(port):
+                self._result_queue.append(('connection', True))
+                print(f"✓ PSU connected on {port}")
+                return True
+
+        self._result_queue.append(('connection', False))
+        print(f"⚠ PSU not found — retry in {self.RECONNECT_DELAY_S:.0f} s")
+        return False
+
+    def _candidate_ports(self) -> list:
+        import glob
+        found = []
+        for pattern in ('/dev/ttyUSB*', '/dev/ttyACM*'):
+            found.extend(sorted(glob.glob(pattern)))
+        ordered = [self._preferred_port]
+        for p in found:
+            if p not in ordered:
+                ordered.append(p)
+        return ordered
+
+    def _probe_port(self, port: str) -> bool:
+        """
+        Identify the OWON SPE6103 on this port.
+        Mirrors working test script exactly:
+            ser = serial.Serial(port, 115200, timeout=2)
+            time.sleep(2)
+            ser.write(b"*IDN?\r\n")
+            response = ser.readline()
+        """
+        import serial as _serial, time as _t
+        ser = None
+        try:
+            ser = _serial.Serial(
+                port          = port,
+                baudrate      = self.BAUD,
+                bytesize      = _serial.EIGHTBITS,
+                parity        = _serial.PARITY_NONE,
+                stopbits      = _serial.STOPBITS_ONE,
+                timeout       = self.TIMEOUT,       # 2.0 s — test script: timeout=2
+                write_timeout = self.TIMEOUT,
+            )
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+
+            print(f"  {port}: waiting {self.SETTLE_S:.0f} s for OWON to wake…")
+            _t.sleep(self.SETTLE_S)                 # 2.0 s — test script: time.sleep(2)
+
+            ser.reset_input_buffer()
+            ser.write(b'*IDN?\r\n')             # test script: ser.write(b"*IDN?\r\n")
+            ser.flush()
+            raw = ser.readline()                    # test script: ser.readline()
+            idn = raw.decode('ascii', errors='replace').strip().upper()
+            print(f"  {port}: IDN → '{idn}'")
+
+            if any(kw in idn for kw in self.IDN_KEYS):
+                self._serial      = ser
+                self._active_port = port
+                return True
+
+            ser.close()
+            return False
+
+        except Exception as exc:
+            print(f"  {port}: probe error — {exc}")
+            try:
+                if ser:
+                    ser.close()
+            except Exception:
+                pass
+            return False
+
+    # ── Low-level serial helpers ──────────────────────────────────────────
+
+    def _close_port(self):
+        if self._serial:
+            try:
+                self._serial.close()
+            except Exception:
+                pass
+            self._serial      = None
+            self._active_port = None
+
+    def _send(self, cmd: str):
+        """Send a SCPI command (no response expected)."""
+        if not self._serial:
+            return
+        self._serial.write(cmd.strip().encode('ascii') + self.TERM)
+        self._serial.flush()
+
+    def _query(self, cmd: str) -> str:
+        """
+        Send a SCPI query and return the response.
+        Mirrors test script: ser.write(...) then ser.readline()
+        The 2 s serial timeout handles the wait — no sleep needed.
+        """
+        if not self._serial:
+            return ''
+        self._serial.write(cmd.strip().encode('ascii') + self.TERM)
+        self._serial.flush()
+        raw = self._serial.readline()               # blocks up to TIMEOUT=2 s
+        return raw.decode('ascii', errors='replace').strip()
+
+    @staticmethod
+    def _parse_float(raw: str) -> float:
+        """Parse first number from SCPI response. Returns 0.0 on failure."""
+        import re
+        m = re.search(r'[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?', raw)
+        if m:
+            try:
+                return float(m.group())
+            except ValueError:
+                pass
+        return 0.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END PSU SCPI WORKER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+
 
 # — ADDED: KEY RELEASE STOP MIRROR —
 class KeyReleaseFilter(QObject):
@@ -316,6 +608,34 @@ class HandlerClass:
         # — ADDED: TOUCH-OFF AND VIEW TAB STATE —
         self._touchoff_axis = None   # last selected axis for SET SELECTED
         # — END ADDED: TOUCH-OFF AND VIEW TAB STATE —
+
+        # ── PSU SCPI COMMUNICATION STATE ─────────────────────────────────
+        # _psu_port: preferred port tried first during auto-detection.
+        # Set to '' to skip directly to full scan of all /dev/ttyUSB* ports.
+        # Set to '/dev/ttyUSB0' (or similar) to try that port first.
+        self._psu_port    = '/dev/ttyUSB0'  # confirmed device node
+        self._psu_baud    = 115200           # confirmed baud rate
+        self._psu_worker  = None
+        self._psu_connected = False
+
+        # Anti-feedback flags: set True while we are programmatically updating
+        # a widget to prevent the valueChanged/textChanged signal from sending
+        # a redundant SCPI command back to the instrument.
+        self._psu_updating_v = False   # True while GUI voltage field is being set by poll
+        self._psu_updating_i = False   # True while GUI current field is being set by poll
+        self._psu_updating_out = False # True while output button state is being set by poll
+
+        # Last known polled setpoints — used to detect front-panel changes
+        # without spamming SET commands on every poll tick.
+        self._psu_last_v_set = None   # float or None
+        self._psu_last_i_set = None   # float or None
+        self._psu_last_out   = None   # bool or None
+
+        # Live measured values — read by the graph instead of parsing label text
+        self._psu_meas_v = 0.0
+        self._psu_meas_i = 0.0
+        self._psu_meas_p = 0.0
+        # ── END PSU SCPI STATE ────────────────────────────────────────────
         
     def initialized__(self):
         """Called after widgets are initialized"""
@@ -2620,6 +2940,9 @@ class HandlerClass:
             # Build the matplotlib graph inside frame_ecdm_graph
             self._build_ecdm_graph()
 
+            # Start the background PSU communication thread
+            self.setup_psu_comms()
+
             print("✓ Preview/Offset/Camera/ECDM tabs connected")
         except Exception as e:
             print(f"Graphics tabs setup note: {e}")
@@ -3035,18 +3358,13 @@ class HandlerClass:
 
             t_rel = now - self._ecdm_graph_t0   # seconds since graph started
 
-            # ── Read PSU values from label widgets ───────────────────────
-            # Replace these reads with real serial/HAL values when hardware
-            # is connected.  The .replace() strips the unit suffix added by
-            # _psu_output_on / _psu_output_off handlers.
-            try:
-                v = float(self.w.lbl_psu_voltage.text().replace('V', '').strip())
-            except Exception:
-                v = 0.0
-            try:
-                i = float(self.w.lbl_psu_current.text().replace('A', '').strip())
-            except Exception:
-                i = 0.0
+            # ── Read PSU values from live instrument measurements ────────
+            # _on_psu_measurement() keeps these instance variables current.
+            # This replaces the previous approach of parsing the label text
+            # which was fragile and only worked when the GUI had already
+            # been updated.
+            v = self._psu_meas_v
+            i = self._psu_meas_i
 
             self._ecdm_time_data.append(t_rel)
             self._ecdm_volt_data.append(v)
@@ -3099,12 +3417,223 @@ class HandlerClass:
         except Exception as e:
             print(f"ECDM graph update error: {e}")
 
-    # ── PSU button handlers ────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════
+    # PSU SCPI COMMUNICATION — two-way synchronisation with OWON SPE6103
+    # ══════════════════════════════════════════════════════════════════════
+
+    def setup_psu_comms(self):
+        """
+        Create PsuWorker (plain Python class, no QObject/signals) and start
+        its daemon thread.  A QTimer on the GUI thread calls _drain_psu_results()
+        every 200 ms to pull results out of the worker's deque and update the GUI.
+        This replaces the previous pyqtSignal architecture which was unreliable
+        on Raspberry Pi PyQt5 builds (signals silently dropped from foreign threads).
+        """
+        import traceback as _tb
+        try:
+            try:
+                self.w.lbl_psu_connection.setText("● Searching...")
+                self.w.lbl_psu_connection.setStyleSheet("color: #f0a500; font-weight: bold;")
+                self.w.lbl_psu_status.setText("SMPS: scanning ports...")
+                self.w.lbl_psu_status.setStyleSheet("color: #f0a500; font-weight: bold;")
+            except Exception:
+                pass
+
+            print(f"[PSU] setup: preferred_port={self._psu_port!r}")
+            self._psu_worker = PsuWorker(self._psu_port)
+            self._psu_worker.start()
+
+            # QTimer drains result queue on GUI thread — 100% reliable
+            self._psu_drain_timer = QTimer()
+            self._psu_drain_timer.timeout.connect(self._drain_psu_results)
+            self._psu_drain_timer.start(200)   # drain every 200 ms
+
+            print("[PSU] worker started OK — drain timer running at 200 ms")
+        except Exception as e:
+            print(f"[PSU] setup FAILED: {e}")
+            _tb.print_exc()
+
+    def teardown_psu_comms(self):
+        """Stop the drain timer and the worker thread cleanly."""
+        try:
+            self._psu_drain_timer.stop()
+        except Exception:
+            pass
+        try:
+            if self._psu_worker:
+                self._psu_worker.stop()
+        except Exception as e:
+            print(f"PSU teardown note: {e}")
+
+    def _drain_psu_results(self):
+        """
+        Called every 200 ms by QTimer on the GUI thread.
+        Drains all results the worker thread has pushed into its deque
+        and dispatches each one to the appropriate GUI update method.
+        This is the ONLY place Qt widgets are touched from PSU data.
+        """
+        if not self._psu_worker:
+            return
+        try:
+            for item in self._psu_worker.drain_results():
+                kind = item[0]
+                if kind == 'measurement':
+                    _, v, i, p = item
+                    self._on_psu_measurement(v, i, p)
+                elif kind == 'setpoint':
+                    _, v_set, i_set = item
+                    self._on_psu_setpoint(v_set, i_set)
+                elif kind == 'output':
+                    _, output_on = item
+                    self._on_psu_output_state(output_on)
+                elif kind == 'connection':
+                    _, connected = item
+                    self._on_psu_connection(connected)
+        except Exception as e:
+            print(f"PSU drain error: {e}")
+
+    # ── Callbacks: called from _drain_psu_results on the GUI thread ───────
+
+    def _on_psu_measurement(self, v_meas: float, i_meas: float, p_meas: float):
+        """Update measurement display labels with live instrument readings."""
+        self._psu_meas_v = v_meas
+        self._psu_meas_i = i_meas
+        self._psu_meas_p = p_meas
+        try:
+            self.w.lbl_psu_voltage.setText(f"{v_meas:.3f} V")
+            self.w.lbl_psu_current.setText(f"{i_meas:.3f} A")
+            self.w.lbl_psu_power.setText(f"{p_meas:.3f} W")
+        except Exception:
+            pass
+
+    def _on_psu_setpoint(self, v_set: float, i_set: float):
+        """Reflect instrument setpoints back into the GUI input fields."""
+        if v_set != self._psu_last_v_set:
+            self._psu_last_v_set = v_set
+            try:
+                self._psu_updating_v = True
+                self.w.edit_psu_voltage_set.setText(f"{v_set:.3f}")
+            except Exception:
+                pass
+            finally:
+                self._psu_updating_v = False
+
+        if i_set != self._psu_last_i_set:
+            self._psu_last_i_set = i_set
+            try:
+                self._psu_updating_i = True
+                self.w.edit_psu_current_set.setText(f"{i_set:.3f}")
+            except Exception:
+                pass
+            finally:
+                self._psu_updating_i = False
+
+    def _on_psu_output_state(self, output_on: bool):
+        """Synchronise output ON/OFF button appearance with instrument state."""
+        if output_on == self._psu_last_out:
+            return
+        self._psu_last_out = output_on
+        try:
+            self._psu_updating_out = True
+            if output_on:
+                self._apply_psu_output_on_style()
+            else:
+                self._apply_psu_output_off_style()
+        except Exception:
+            pass
+        finally:
+            self._psu_updating_out = False
+
+    def _on_psu_connection(self, connected: bool):
+        """Update connection badge and status bar text."""
+        self._psu_connected = connected
+        try:
+            if connected:
+                self.w.lbl_psu_connection.setText("● Connected")
+                self.w.lbl_psu_connection.setStyleSheet(
+                    "color: #00ff88; font-weight: bold;")
+                self.w.lbl_psu_status.setText("SMPS connected")
+                self.w.lbl_psu_status.setStyleSheet(
+                    "color: #00ff88; font-weight: bold;")
+            else:
+                self.w.lbl_psu_connection.setText("● Disconnected")
+                self.w.lbl_psu_connection.setStyleSheet(
+                    "color: #e74c3c; font-weight: bold;")
+                self.w.lbl_psu_status.setText("SMPS disconnected — retrying…")
+                self.w.lbl_psu_status.setStyleSheet(
+                    "color: #e74c3c; font-weight: bold;")
+        except Exception:
+            pass
+
+    # ── GUI → instrument: button handlers ────────────────────────────────
 
     def _psu_output_on(self):
-        """Activate PSU output (stub — connect to serial/HAL as needed)."""
+        """Send OUTP ON to instrument, then update GUI optimistically."""
+        if self._psu_updating_out:
+            return
         try:
-            print("PSU OUTPUT ON")
+            if self._psu_worker:
+                self._psu_worker.enqueue_command('OUTP ON')
+            print("PSU OUTPUT ON → SCPI queued")
+            self._psu_last_out = True   # Optimistic local update
+            self._apply_psu_output_on_style()
+        except Exception as e:
+            print(f"PSU output on error: {e}")
+
+    def _psu_output_off(self):
+        """Send OUTP OFF to instrument, then update GUI optimistically."""
+        if self._psu_updating_out:
+            return
+        try:
+            if self._psu_worker:
+                self._psu_worker.enqueue_command('OUTP OFF')
+            print("PSU OUTPUT OFF → SCPI queued")
+            self._psu_last_out = False  # Optimistic local update
+            self._apply_psu_output_off_style()
+        except Exception as e:
+            print(f"PSU output off error: {e}")
+
+    def _psu_set_voltage(self):
+        """
+        Read voltage from input field and send VOLT <val> to instrument.
+        The anti-feedback flag is checked so a poll-driven field update does
+        not immediately re-send the same value.
+        """
+        if self._psu_updating_v:
+            return
+        try:
+            v = float(self.w.edit_psu_voltage_set.text())
+            if self._psu_worker:
+                self._psu_worker.enqueue_command(f'VOLT {v:.3f}')
+            self._psu_last_v_set = v   # Suppress echo on next poll
+            print(f"PSU SET VOLTAGE: {v:.3f} V → SCPI queued")
+        except ValueError:
+            print("PSU set V: invalid value")
+        except Exception as e:
+            print(f"PSU set voltage error: {e}")
+
+    def _psu_set_current(self):
+        """
+        Read current from input field and send CURR <val> to instrument.
+        """
+        if self._psu_updating_i:
+            return
+        try:
+            i = float(self.w.edit_psu_current_set.text())
+            if self._psu_worker:
+                self._psu_worker.enqueue_command(f'CURR {i:.3f}')
+            self._psu_last_i_set = i   # Suppress echo on next poll
+            print(f"PSU SET CURRENT: {i:.3f} A → SCPI queued")
+        except ValueError:
+            print("PSU set I: invalid value")
+        except Exception as e:
+            print(f"PSU set current error: {e}")
+
+    # ── Shared style helpers (DRY — called by button handlers AND poll slot) ─
+
+    def _apply_psu_output_on_style(self):
+        """Apply ON styling to output status label and buttons."""
+        try:
             self.w.lbl_psu_output.setText("ON")
             self.w.lbl_psu_output.setStyleSheet(
                 "color: #00ff88; font-size: 10pt; font-weight: bold;"
@@ -3121,13 +3650,12 @@ class HandlerClass:
                 " border-radius: 4px; font-size: 9pt; }"
                 "QPushButton:hover { border-color: #fff; }")
             self.w.lbl_psu_status.setText("SMPS output ON")
-        except Exception as e:
-            print(f"PSU output on error: {e}")
+        except Exception:
+            pass
 
-    def _psu_output_off(self):
-        """Deactivate PSU output (stub — connect to serial/HAL as needed)."""
+    def _apply_psu_output_off_style(self):
+        """Apply OFF styling to output status label and buttons."""
         try:
-            print("PSU OUTPUT OFF")
             self.w.lbl_psu_output.setText("OFF")
             self.w.lbl_psu_output.setStyleSheet(
                 "color: #e74c3c; font-size: 10pt; font-weight: bold;"
@@ -3144,26 +3672,12 @@ class HandlerClass:
                 " border-radius: 4px; font-size: 9pt; }"
                 "QPushButton:hover { border-color: #fff; }")
             self.w.lbl_psu_status.setText("SMPS output OFF")
-        except Exception as e:
-            print(f"PSU output off error: {e}")
+        except Exception:
+            pass
 
-    def _psu_set_voltage(self):
-        """Send voltage setpoint (stub — wire to serial port for real hardware)."""
-        try:
-            v = float(self.w.edit_psu_voltage_set.text())
-            print(f"PSU SET VOLTAGE: {v:.3f} V")
-            # TODO: send serial command to OWON SPE6103
-        except ValueError:
-            print("PSU set V: invalid value")
-
-    def _psu_set_current(self):
-        """Send current setpoint (stub)."""
-        try:
-            i = float(self.w.edit_psu_current_set.text())
-            print(f"PSU SET CURRENT: {i:.3f} A")
-            # TODO: send serial command to OWON SPE6103
-        except ValueError:
-            print("PSU set I: invalid value")
+    # ══════════════════════════════════════════════════════════════════════
+    # END PSU SCPI COMMUNICATION
+    # ══════════════════════════════════════════════════════════════════════
 
     # ── Function Generator button handlers ────────────────────────────
 
@@ -3855,6 +4369,13 @@ class HandlerClass:
 
         except Exception as e:
             print(f"✗ _send_mdi_command error ({gcode_command}): {e}")
+
+    def teardown__(self):
+        """Called by QtVCP on shutdown — stop PSU worker thread cleanly."""
+        try:
+            self.teardown_psu_comms()
+        except Exception:
+            pass
 
     # ═══════════════════════════════════════════════════════════════════════
     # — END ADDED: TOUCH-OFF SECTION —
