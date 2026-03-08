@@ -315,6 +315,275 @@ class PsuWorker:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# FUNCTION GENERATOR SCPI WORKER  (UNI-T UTG932E)
+# ───────────────────────────────────────────────────────────────────────────────
+# Transport: /dev/usbtmc0  — Linux USBTMC kernel driver
+#
+# The UTG932E exposes itself as a USBTMC device. Linux binds it to
+# /dev/usbtmc0 automatically when plugged in.  Communication is a plain
+# file open/write/read — NO pyserial needed at all.
+#
+# Confirmed working pattern (from user's test script):
+#     f = open('/dev/usbtmc0', 'r+b')   or  open(..., 'wb') + open(..., 'rb')
+#     f.write(b'*IDN?\n')
+#     response = f.read(256)
+#
+# Architecture (identical to PsuWorker — same callback-queue pattern):
+#   • Plain Python class — no QObject, no pyqtSignal
+#   • threading.Thread runs device I/O in the background
+#   • Results pushed into collections.deque (_result_queue)
+#   • QTimer on GUI thread drains the deque every 200 ms
+#
+# Result tuples pushed to _result_queue:
+#   ('connection', bool)
+#   ('state', freq, wave, ampl, duty, ch1_on)
+# ═══════════════════════════════════════════════════════════════════════════════
+class FgWorker:
+    """
+    SCPI worker for the UNI-T UTG900E via /dev/usbtmc0.
+
+    Transport : Linux USBTMC kernel driver — plain open() / write() / read().
+    Confirmed working on this exact device (tested on RPi):
+        IDN response: b'UNI-T Technologies,UTG900E,3743842247,3.01'
+        FREQ query:   b'1.111111e+03\n'
+        WAVE query:   b'SINe'
+        OUT query:    b'1'
+
+    All SCPI commands from official UTG900E Programming Manual (UNI-T, 2017).
+    The UTG900E uses the :CHANnel<n>: command tree exclusively.
+
+    Architecture — identical callback-queue pattern as PsuWorker:
+      plain Python class, threading.Thread, collections.deque result queue,
+      QTimer on GUI thread drains results every 200 ms.
+
+    Result tuples:
+      ('connection', bool)
+      ('state', freq_hz, wave_str, ampl_vpp, duty_pct, ch1_on_bool)
+    """
+
+    # ── Constants ────────────────────────────────────────────────────────
+    DEVICE            = '/dev/usbtmc0'
+    TERM              = b'\n'
+    READ_SIZE         = 256
+    POLL_INTERVAL_S   = 1.0
+    RECONNECT_DELAY_S = 5.0
+    INTER_CMD_SLEEP   = 0.15
+    READ_SLEEP_S      = 0.5    # seconds to wait after write before read()
+
+    # Confirmed from live IDN: 'UNI-T Technologies,UTG900E,...'
+    IDN_KEYS = ('UNI-T', 'UTG9')
+
+    # :CHANnel1:BASE:WAVe parameter values (UTG900E Programming Manual):
+    #   {SINe | SQUare | PULSe | RAMP | ARB | NOISe | DC}
+    WAVEFORM_MAP = {
+        'SINe':   'SINe',
+        'SQUare': 'SQUare',
+        'RAMP':   'RAMP',
+        'PULSe':  'PULSe',
+        'NOISe':  'NOISe',
+    }
+
+    # :CHANnel1:BASE:WAVe? confirmed to return e.g. b'SINe' (no newline).
+    # Map upper-cased response -> GUI display name.
+    WAVEFORM_DISPLAY = {
+        'SINE':   'SINe',
+        'SQUARE': 'SQUare',
+        'RAMP':   'RAMP',
+        'PULSE':  'PULSe',
+        'NOISE':  'NOISe',
+        'ARB':    'ARB',
+        'DC':     'DC',
+    }
+
+    def __init__(self, device='/dev/usbtmc0'):
+        import threading, collections
+        self._device       = device or self.DEVICE
+        self._fh           = None
+        self._stop_event   = threading.Event()
+        self._thread       = threading.Thread(
+            target=self._run, name='FgScpiWorker', daemon=True)
+        self._cmd_lock     = threading.Lock()
+        self._cmd_queue    = []
+        self._result_queue = collections.deque()
+
+    # ── Public API ───────────────────────────────────────────────────────
+
+    def start(self):
+        self._stop_event.clear()
+        self._thread.start()
+        print("✓ FgWorker thread started")
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join(timeout=6.0)
+        self._close()
+        print("✓ FgWorker thread stopped")
+
+    def enqueue_command(self, scpi: str):
+        """Thread-safe: queue a SCPI command string."""
+        with self._cmd_lock:
+            self._cmd_queue.append(scpi)
+
+    def drain_results(self):
+        """Called from GUI thread via QTimer. Returns all pending results."""
+        results = []
+        try:
+            while True:
+                results.append(self._result_queue.popleft())
+        except IndexError:
+            pass
+        return results
+
+    # ── Worker thread ─────────────────────────────────────────────────────
+
+    def _run(self):
+        import time as _t
+        connected   = False
+        last_failed = 0.0
+
+        while not self._stop_event.is_set():
+
+            if not connected:
+                now = _t.time()
+                if now - last_failed < self.RECONNECT_DELAY_S:
+                    self._stop_event.wait(
+                        min(0.25, self.RECONNECT_DELAY_S - (now - last_failed)))
+                    continue
+                connected = self._do_connect()
+                if not connected:
+                    last_failed = _t.time()
+                continue
+
+            try:
+                # Drain outgoing command queue first
+                with self._cmd_lock:
+                    pending = list(self._cmd_queue)
+                    self._cmd_queue.clear()
+                for cmd in pending:
+                    self._send(cmd)
+                    _t.sleep(self.INTER_CMD_SLEEP)
+
+                # Poll state — all commands verified against live instrument:
+                #   :CHANnel1:BASE:FREQuency?  -> b'1.111111e+03\n'
+                #   :CHANnel1:BASE:WAVe?       -> b'SINe'
+                #   :CHANnel1:BASE:AMPLitude?  -> scientific notation
+                #   :CHANnel1:BASE:DUTY?       -> integer
+                #   :CHANnel1:OUTPut?          -> b'1' or b'0'
+                freq   = self._parse_float(self._query(':CHANnel1:BASE:FREQuency?'))
+                wave_r = self._query(':CHANnel1:BASE:WAVe?').strip()
+                wave   = self.WAVEFORM_DISPLAY.get(wave_r.upper(), wave_r)
+                ampl   = self._parse_float(self._query(':CHANnel1:BASE:AMPLitude?'))
+                duty   = self._parse_float(self._query(':CHANnel1:BASE:DUTY?'))
+                out_r  = self._query(':CHANnel1:OUTPut?').strip()
+                ch1_on = out_r in ('1', 'ON')   # confirmed live: returns '1'
+                self._result_queue.append(('state', freq, wave, ampl, duty, ch1_on))
+
+            except Exception as exc:
+                print(f"⚠ FG poll error: {exc}")
+                self._close()
+                connected   = False
+                last_failed = _t.time()
+                self._result_queue.append(('connection', False))
+                continue
+
+            self._stop_event.wait(self.POLL_INTERVAL_S)
+
+        self._close()
+
+    # ── Connection ────────────────────────────────────────────────────────
+
+    def _do_connect(self) -> bool:
+        self._close()
+        import os as _os, time as _t
+        device = self._device
+
+        if not _os.path.exists(device):
+            print(f"⚠ FG: {device} not found — USB unplugged?")
+            self._result_queue.append(('connection', False))
+            return False
+
+        print(f"FG: opening {device} ...")
+        try:
+            self._fh = open(device, 'r+b', buffering=0)
+            print(f"  {device}: opened OK")
+
+            self._fh.write(b'*IDN?\n')
+            _t.sleep(self.READ_SLEEP_S)
+            raw = self._fh.read(self.READ_SIZE)
+
+            if not raw:
+                print(f"  {device}: no IDN response")
+                self._close()
+                self._result_queue.append(('connection', False))
+                return False
+
+            idn = raw.decode('ascii', errors='replace').strip()
+            print(f"  {device}: IDN → '{idn}'")
+
+            if any(kw in idn for kw in self.IDN_KEYS):
+                self._result_queue.append(('connection', True))
+                print(f"✓ FG connected: {idn}")
+                return True
+
+            print(f"  {device}: IDN does not match {self.IDN_KEYS}")
+            self._close()
+            self._result_queue.append(('connection', False))
+            return False
+
+        except PermissionError:
+            print(f"⚠ FG: Permission denied on {device}")
+            print(f"  Run: sudo chmod 666 {device}")
+            self._close()
+            self._result_queue.append(('connection', False))
+            return False
+
+        except Exception as exc:
+            print(f"⚠ FG: connect error: {exc}")
+            self._close()
+            self._result_queue.append(('connection', False))
+            return False
+
+    # ── Low-level helpers ─────────────────────────────────────────────────
+
+    def _close(self):
+        if self._fh:
+            try:
+                self._fh.close()
+            except Exception:
+                pass
+            self._fh = None
+
+    def _send(self, cmd: str):
+        """Send a SCPI command (no response expected)."""
+        if not self._fh:
+            return
+        self._fh.write(cmd.strip().encode('ascii') + self.TERM)
+
+    def _query(self, cmd: str) -> str:
+        """Send a SCPI query and return the decoded response."""
+        if not self._fh:
+            return ''
+        import time as _t
+        self._fh.write(cmd.strip().encode('ascii') + self.TERM)
+        _t.sleep(self.READ_SLEEP_S)
+        raw = self._fh.read(self.READ_SIZE)
+        return raw.decode('ascii', errors='replace').strip()
+
+    @staticmethod
+    def _parse_float(raw: str) -> float:
+        """Parse first number from SCPI response. Handles scientific notation."""
+        import re
+        m = re.search(r'[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?', raw)
+        if m:
+            try:
+                return float(m.group())
+            except ValueError:
+                pass
+        return 0.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END FUNCTION GENERATOR SCPI WORKER
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 # — ADDED: KEY RELEASE STOP MIRROR —
@@ -636,6 +905,19 @@ class HandlerClass:
         self._psu_meas_i = 0.0
         self._psu_meas_p = 0.0
         # ── END PSU SCPI STATE ────────────────────────────────────────────
+
+        # ── FUNCTION GENERATOR SCPI STATE ────────────────────────────────
+        # UTG932E uses Linux USBTMC driver — confirmed at /dev/usbtmc0
+        self._fg_port       = '/dev/usbtmc0'
+        self._fg_worker     = None
+        self._fg_connected  = False
+        self._fg_updating   = False   # True while poll is updating widgets
+        self._fg_last_freq  = None
+        self._fg_last_wave  = None
+        self._fg_last_ampl  = None
+        self._fg_last_duty  = None
+        self._fg_last_ch1   = None
+        # ── END FUNCTION GENERATOR SCPI STATE ────────────────────────────
         
     def initialized__(self):
         """Called after widgets are initialized"""
@@ -2943,6 +3225,9 @@ class HandlerClass:
             # Start the background PSU communication thread
             self.setup_psu_comms()
 
+            # Start the background Function Generator communication thread
+            self.setup_fg_comms()
+
             print("✓ Preview/Offset/Camera/ECDM tabs connected")
         except Exception as e:
             print(f"Graphics tabs setup note: {e}")
@@ -3679,91 +3964,252 @@ class HandlerClass:
     # END PSU SCPI COMMUNICATION
     # ══════════════════════════════════════════════════════════════════════
 
-    # ── Function Generator button handlers ────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════
+    # FUNCTION GENERATOR SCPI COMMUNICATION — UNI-T UTG932E
+    # ══════════════════════════════════════════════════════════════════════
+
+    def setup_fg_comms(self):
+        """
+        Create FgWorker and start its daemon thread.
+        Exact same pattern as setup_psu_comms():
+          - plain Python worker class, no QObject/signals
+          - QTimer on GUI thread drains result deque every 200 ms
+        """
+        import traceback as _tb
+        try:
+            try:
+                self.w.lbl_fg_connection.setText("● Searching...")
+                self.w.lbl_fg_connection.setStyleSheet(
+                    "color: #f0a500; font-weight: bold;")
+            except Exception:
+                pass
+
+            print(f"[FG] setup: device={self._fg_port!r}")
+            self._fg_worker = FgWorker(self._fg_port)
+            self._fg_worker.start()
+
+            # QTimer drains result queue on GUI thread — proven reliable
+            self._fg_drain_timer = QTimer()
+            self._fg_drain_timer.timeout.connect(self._drain_fg_results)
+            self._fg_drain_timer.start(200)   # drain every 200 ms
+
+            print("[FG] worker started OK — drain timer running at 200 ms")
+        except Exception as e:
+            print(f"[FG] setup FAILED: {e}")
+            _tb.print_exc()
+
+    def teardown_fg_comms(self):
+        """Stop the FG drain timer and worker thread cleanly."""
+        try:
+            self._fg_drain_timer.stop()
+        except Exception:
+            pass
+        try:
+            if self._fg_worker:
+                self._fg_worker.stop()
+        except Exception as e:
+            print(f"FG teardown note: {e}")
+
+    def _drain_fg_results(self):
+        """
+        Called every 200 ms by QTimer on GUI thread.
+        Dispatches worker result tuples to GUI update callbacks.
+        Same pattern as _drain_psu_results().
+        """
+        if not self._fg_worker:
+            return
+        try:
+            for item in self._fg_worker.drain_results():
+                kind = item[0]
+                if kind == 'connection':
+                    self._on_fg_connection(item[1])
+                elif kind == 'state':
+                    _, freq, wave, ampl, duty, ch1_on = item
+                    self._on_fg_state(freq, wave, ampl, duty, ch1_on)
+        except Exception as e:
+            print(f"FG drain error: {e}")
+
+    # ── Callbacks: called from _drain_fg_results on the GUI thread ────────
+
+    def _on_fg_connection(self, connected: bool):
+        """Update FG connection badge — same pattern as _on_psu_connection."""
+        self._fg_connected = connected
+        try:
+            if connected:
+                self.w.lbl_fg_connection.setText("● Connected")
+                self.w.lbl_fg_connection.setStyleSheet(
+                    "color: #00ff88; font-weight: bold;")
+            else:
+                self.w.lbl_fg_connection.setText("● Disconnected")
+                self.w.lbl_fg_connection.setStyleSheet(
+                    "color: #e74c3c; font-weight: bold;")
+        except Exception:
+            pass
+
+    def _on_fg_state(self, freq: float, wave: str, ampl: float,
+                     duty: float, ch1_on: bool):
+        """Reflect polled instrument state into GUI labels. Anti-feedback via _fg_updating."""
+        self._fg_updating = True
+        try:
+            if freq != self._fg_last_freq:
+                self._fg_last_freq = freq
+                try:
+                    self.w.lbl_fg_freq_val.setText(f"{freq:.3f}")
+                except Exception:
+                    pass
+            if wave != self._fg_last_wave:
+                self._fg_last_wave = wave
+                try:
+                    self.w.lbl_fg_wave_val.setText(wave)
+                except Exception:
+                    pass
+            if ampl != self._fg_last_ampl:
+                self._fg_last_ampl = ampl
+                try:
+                    self.w.lbl_fg_amp_val.setText(f"{ampl:.3f}")
+                except Exception:
+                    pass
+            if duty != self._fg_last_duty:
+                self._fg_last_duty = duty
+                try:
+                    self.w.lbl_fg_duty_val.setText(f"{duty:.1f}")
+                except Exception:
+                    pass
+            if ch1_on != self._fg_last_ch1:
+                self._fg_last_ch1 = ch1_on
+                self._apply_fg_ch1_style(ch1_on)
+        finally:
+            self._fg_updating = False
+
+    # ── Style helper ──────────────────────────────────────────────────────
+
+    def _apply_fg_ch1_style(self, ch1_on: bool):
+        """Apply ON/OFF visual styling to CH1 label and button pair."""
+        try:
+            if ch1_on:
+                self.w.lbl_fg_out_val.setText("ON")
+                self.w.lbl_fg_out_val.setStyleSheet(
+                    "color: #00ff88; background: #0a2a0a; border: 1px solid #1e8449;"
+                    " border-radius: 3px; padding: 2px 4px; font-weight: bold;")
+                self.w.btn_fg_ch1_on.setStyleSheet(
+                    "QPushButton { background-color: #27ae60; color: white;"
+                    " border: 2px solid #1e8449; font-weight: bold;"
+                    " border-radius: 4px; font-size: 9pt; }"
+                    "QPushButton:hover { border-color: #fff; }")
+                self.w.btn_fg_ch1_off.setStyleSheet(
+                    "QPushButton { background-color: #3a1a1a; color: #aaaaaa;"
+                    " border: 2px solid #5a2d2d; font-weight: bold;"
+                    " border-radius: 4px; font-size: 9pt; }"
+                    "QPushButton:hover { border-color: #fff; }")
+            else:
+                self.w.lbl_fg_out_val.setText("OFF")
+                self.w.lbl_fg_out_val.setStyleSheet(
+                    "color: #e74c3c; background: #2a0a0a; border: 1px solid #943126;"
+                    " border-radius: 3px; padding: 2px 4px; font-weight: bold;")
+                self.w.btn_fg_ch1_on.setStyleSheet(
+                    "QPushButton { background-color: #1a3a1a; color: #aaaaaa;"
+                    " border: 2px solid #2d5a2d; font-weight: bold;"
+                    " border-radius: 4px; font-size: 9pt; }"
+                    "QPushButton:hover { border-color: #fff; }")
+                self.w.btn_fg_ch1_off.setStyleSheet(
+                    "QPushButton { background-color: #c0392b; color: white;"
+                    " border: 2px solid #943126; font-weight: bold;"
+                    " border-radius: 4px; font-size: 9pt; }"
+                    "QPushButton:hover { border-color: #fff; }")
+        except Exception:
+            pass
+
+    # ── GUI → instrument: button handlers ────────────────────────────────
 
     def _fg_set_frequency(self):
-        """Set function generator frequency (stub)."""
+        """Send :CHANnel1:BASE:FREQuency (UTG900E manual)."""
+        if self._fg_updating:
+            return
         try:
             freq = float(self.w.edit_fg_frequency.text())
-            self.w.lbl_fg_freq_val.setText(f"{freq:.0f}")
-            print(f"FG SET FREQUENCY: {freq:.0f} Hz")
-            # TODO: send SCPI to UNI-T UTG932E
+            if self._fg_worker:
+                self._fg_worker.enqueue_command(f':CHANnel1:BASE:FREQuency {freq:.6g}')
+            self.w.lbl_fg_freq_val.setText(f"{freq:.3f}")
+            print(f"FG SET FREQUENCY: {freq:.6g} Hz → queued")
         except ValueError:
             print("FG set freq: invalid value")
+        except Exception as e:
+            print(f"FG set freq error: {e}")
 
     def _fg_set_waveform(self):
-        """Set function generator waveform (stub)."""
+        """Send :CHANnel1:BASE:WAVe (UTG900E manual)."""
+        if self._fg_updating:
+            return
         try:
-            wave = self.w.combo_fg_waveform.currentText()
-            self.w.lbl_fg_wave_val.setText(wave)
-            print(f"FG SET WAVEFORM: {wave}")
-            # TODO: send SCPI to UNI-T UTG932E
+            wave_text = self.w.combo_fg_waveform.currentText()
+            scpi_wave = FgWorker.WAVEFORM_MAP.get(wave_text, wave_text)
+            if self._fg_worker:
+                self._fg_worker.enqueue_command(f':CHANnel1:BASE:WAVe {scpi_wave}')
+            self.w.lbl_fg_wave_val.setText(wave_text)
+            print(f"FG SET WAVEFORM: :CHANnel1:BASE:WAVe {scpi_wave} → queued")
         except Exception as e:
             print(f"FG set wave error: {e}")
 
     def _fg_set_amplitude(self):
-        """Set function generator amplitude (stub)."""
+        """Send :CHANnel1:BASE:AMPLitude (UTG900E manual)."""
+        if self._fg_updating:
+            return
         try:
             ampl = float(self.w.edit_fg_amplitude.text())
+            if self._fg_worker:
+                self._fg_worker.enqueue_command(f':CHANnel1:BASE:AMPLitude {ampl:.4g}')
             self.w.lbl_fg_amp_val.setText(f"{ampl:.3f}")
-            print(f"FG SET AMPLITUDE: {ampl:.3f} Vpp")
-            # TODO: send SCPI to UNI-T UTG932E
+            print(f"FG SET AMPLITUDE: {ampl:.4g} Vpp → queued")
         except ValueError:
             print("FG set ampl: invalid value")
+        except Exception as e:
+            print(f"FG set ampl error: {e}")
 
     def _fg_set_duty(self):
-        """Set function generator duty cycle (stub)."""
+        """Send :CHANnel1:BASE:DUTY (UTG900E manual — integer parameter)."""
+        if self._fg_updating:
+            return
         try:
             duty = float(self.w.edit_fg_duty.text())
+            if self._fg_worker:
+                # Manual specifies integer parameter for DUTY
+                self._fg_worker.enqueue_command(f':CHANnel1:BASE:DUTY {int(duty)}')
             self.w.lbl_fg_duty_val.setText(f"{duty:.1f}")
-            print(f"FG SET DUTY CYCLE: {duty:.1f}%")
-            # TODO: send SCPI to UNI-T UTG932E
+            print(f"FG SET DUTY: {int(duty)}% → queued")
         except ValueError:
             print("FG set duty: invalid value")
+        except Exception as e:
+            print(f"FG set duty error: {e}")
 
     def _fg_ch1_on(self):
-        """Enable CH1 output (stub)."""
+        """Send :CHANnel1:OUTPut ON (UTG900E manual)."""
+        if self._fg_updating:
+            return
         try:
-            print("FG CH1 ON")
-            self.w.lbl_fg_out_val.setText("ON")
-            self.w.lbl_fg_out_val.setStyleSheet(
-                "color: #00ff88; background: #0a2a0a; border: 1px solid #1e8449;"
-                " border-radius: 3px; padding: 2px 4px; font-weight: bold;")
-            self.w.btn_fg_ch1_on.setStyleSheet(
-                "QPushButton { background-color: #27ae60; color: white;"
-                " border: 2px solid #1e8449; font-weight: bold;"
-                " border-radius: 4px; font-size: 9pt; }"
-                "QPushButton:hover { border-color: #fff; }")
-            self.w.btn_fg_ch1_off.setStyleSheet(
-                "QPushButton { background-color: #3a1a1a; color: #aaaaaa;"
-                " border: 2px solid #5a2d2d; font-weight: bold;"
-                " border-radius: 4px; font-size: 9pt; }"
-                "QPushButton:hover { border-color: #fff; }")
-            # TODO: send SCPI to UNI-T UTG932E
+            if self._fg_worker:
+                self._fg_worker.enqueue_command(':CHANnel1:OUTPut ON')
+            self._fg_last_ch1 = True
+            self._apply_fg_ch1_style(True)
+            print("FG CH1 ON → :CHANnel1:OUTPut ON queued")
         except Exception as e:
             print(f"FG CH1 on error: {e}")
 
     def _fg_ch1_off(self):
-        """Disable CH1 output (stub)."""
+        """Send :CHANnel1:OUTPut OFF (UTG900E manual)."""
+        if self._fg_updating:
+            return
         try:
-            print("FG CH1 OFF")
-            self.w.lbl_fg_out_val.setText("OFF")
-            self.w.lbl_fg_out_val.setStyleSheet(
-                "color: #e74c3c; background: #2a0a0a; border: 1px solid #943126;"
-                " border-radius: 3px; padding: 2px 4px; font-weight: bold;")
-            self.w.btn_fg_ch1_on.setStyleSheet(
-                "QPushButton { background-color: #1a3a1a; color: #aaaaaa;"
-                " border: 2px solid #2d5a2d; font-weight: bold;"
-                " border-radius: 4px; font-size: 9pt; }"
-                "QPushButton:hover { border-color: #fff; }")
-            self.w.btn_fg_ch1_off.setStyleSheet(
-                "QPushButton { background-color: #c0392b; color: white;"
-                " border: 2px solid #943126; font-weight: bold;"
-                " border-radius: 4px; font-size: 9pt; }"
-                "QPushButton:hover { border-color: #fff; }")
-            # TODO: send SCPI to UNI-T UTG932E
+            if self._fg_worker:
+                self._fg_worker.enqueue_command(':CHANnel1:OUTPut OFF')
+            self._fg_last_ch1 = False
+            self._apply_fg_ch1_style(False)
+            print("FG CH1 OFF → :CHANnel1:OUTPut OFF queued")
         except Exception as e:
             print(f"FG CH1 off error: {e}")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # END FUNCTION GENERATOR SCPI COMMUNICATION
+    # ══════════════════════════════════════════════════════════════════════
 
     def _resolve_var_file(self):
         """
@@ -4371,9 +4817,13 @@ class HandlerClass:
             print(f"✗ _send_mdi_command error ({gcode_command}): {e}")
 
     def teardown__(self):
-        """Called by QtVCP on shutdown — stop PSU worker thread cleanly."""
+        """Called by QtVCP on shutdown — stop PSU and FG worker threads cleanly."""
         try:
             self.teardown_psu_comms()
+        except Exception:
+            pass
+        try:
+            self.teardown_fg_comms()
         except Exception:
             pass
 
