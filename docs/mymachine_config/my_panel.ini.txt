@@ -32,6 +32,8 @@ CYCLE_TIME = 0.010
 [RS274NGC]
 PARAMETER_FILE = sim.var
 SUBROUTINE_PATH = /usr/share/linuxcnc/ncfiles/subroutines
+USER_M_PATH = /home/meukron/linuxcnc/configs/my_qtvcp_panel_auto_mcode/mcodes
+PROGRAM_PREFIX = /home/meukron/linuxcnc/nc_files
 
 [EMCMOT]
 EMCMOT = motmod

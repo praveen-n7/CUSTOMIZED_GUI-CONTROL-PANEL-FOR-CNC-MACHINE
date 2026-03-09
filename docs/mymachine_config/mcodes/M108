@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+import os, sys, errno, time
+FIFO = "/tmp/linuxcnc_mcode.fifo"
+LOG  = "/tmp/mcode_debug.log"
+def log(m):
+    open(LOG,"a").write(time.strftime("%H:%M:%S")+" [M108] "+m+"\n")
+def send(cmd):
+    log("-> "+cmd)
+    if not os.path.exists(FIFO): log("FIFO missing"); sys.exit(0)
+    deadline = time.time()+3.0
+    while time.time()<deadline:
+        try:
+            fd=os.open(FIFO,os.O_WRONLY|os.O_NONBLOCK)
+            os.write(fd,(cmd+"\n").encode()); os.close(fd); log("OK"); sys.exit(0)
+        except OSError as e:
+            if e.errno in(errno.ENXIO,errno.EAGAIN): time.sleep(0.05); continue
+            log("ERR:"+str(e)); sys.exit(0)
+    log("TIMEOUT"); sys.exit(0)
+send("FG:OUTPUT:OFF")

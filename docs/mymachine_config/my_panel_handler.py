@@ -918,6 +918,14 @@ class HandlerClass:
         self._fg_last_duty  = None
         self._fg_last_ch1   = None
         # ── END FUNCTION GENERATOR SCPI STATE ────────────────────────────
+
+        # ── M-CODE FIFO STATE ─────────────────────────────────────────────
+        # Named FIFO at /tmp/linuxcnc_mcode.fifo
+        # M100-M108 scripts write one command line; QTimer reads every 100ms
+        self._mcode_fifo_path   = '/tmp/linuxcnc_mcode.fifo'
+        self._mcode_fifo_fd     = None
+        self._mcode_drain_timer = None
+        # ── END M-CODE FIFO STATE ─────────────────────────────────────────
         
     def initialized__(self):
         """Called after widgets are initialized"""
@@ -3228,6 +3236,9 @@ class HandlerClass:
             # Start the background Function Generator communication thread
             self.setup_fg_comms()
 
+            # Start M-code FIFO listener (M100-M108)
+            self.setup_mcode_fifo()
+
             print("✓ Preview/Offset/Camera/ECDM tabs connected")
         except Exception as e:
             print(f"Graphics tabs setup note: {e}")
@@ -4207,6 +4218,199 @@ class HandlerClass:
         except Exception as e:
             print(f"FG CH1 off error: {e}")
 
+
+    # ══════════════════════════════════════════════════════════════════════
+    # M-CODE FIFO DISPATCH  (M100–M108)
+    # ──────────────────────────────────────────────────────────────────────
+    # M100-M108 shell scripts write one ASCII command line to the FIFO.
+    # The QTimer (_mcode_drain_timer) reads it on the GUI thread every 100ms
+    # and dispatches directly to the existing PSU/FG worker queues.
+    #
+    # Command protocol:
+    #   PSU:OUTPUT:ON | PSU:OUTPUT:OFF
+    #   PSU:VOLT:<float>      PSU:CURR:<float>
+    #   FG:FREQ:<hz>          FG:WAVE:<SINe|SQUare|...>
+    #   FG:AMPL:<vpp>         FG:DUTY:<int_pct>
+    #   FG:OUTPUT:OFF
+    # ══════════════════════════════════════════════════════════════════════
+
+    def setup_mcode_fifo(self):
+        import os
+        from PyQt5.QtCore import QTimer
+        fifo = self._mcode_fifo_path
+        if os.path.exists(fifo):
+            try:
+                os.unlink(fifo)
+            except Exception:
+                pass
+        try:
+            os.mkfifo(fifo, 0o666)
+        except Exception as e:
+            print(f"⚠ M-code FIFO create failed: {e}")
+            return
+        try:
+            self._mcode_fifo_fd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        except Exception as e:
+            print(f"⚠ M-code FIFO open failed: {e}")
+            return
+        self._mcode_drain_timer = QTimer()
+        self._mcode_drain_timer.timeout.connect(self._drain_mcode_fifo)
+        self._mcode_drain_timer.start(100)
+        print(f"✓ M-code FIFO ready: {fifo}")
+
+    def teardown_mcode_fifo(self):
+        import os
+        if self._mcode_drain_timer:
+            try: self._mcode_drain_timer.stop()
+            except Exception: pass
+        if self._mcode_fifo_fd is not None:
+            try: os.close(self._mcode_fifo_fd)
+            except Exception: pass
+            self._mcode_fifo_fd = None
+        try: os.unlink(self._mcode_fifo_path)
+        except Exception: pass
+
+    def _drain_mcode_fifo(self):
+        import os, errno
+        if self._mcode_fifo_fd is None:
+            return
+        try:
+            raw = os.read(self._mcode_fifo_fd, 4096)
+        except OSError as e:
+            if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                return
+            print(f"⚠ M-code FIFO read error: {e}")
+            return
+        if not raw:
+            return
+        for line in raw.decode('ascii', errors='replace').splitlines():
+            line = line.strip()
+            if line:
+                self._dispatch_mcode(line)
+
+    def _dispatch_mcode(self, cmd: str):
+        """Parse one FIFO command and call the correct worker method."""
+        print(f"[M-code] ← {cmd!r}")
+        parts = cmd.split(':', 2)
+        if len(parts) < 2:
+            return
+        try:
+            dev, sub = parts[0], parts[1]
+            val = parts[2] if len(parts) > 2 else ''
+
+            if dev == 'PSU':
+                if sub == 'OUTPUT':
+                    if val == 'ON':
+                        if self._psu_worker: self._psu_worker.enqueue_command('OUTP ON')
+                        self._psu_last_out = True
+                        self._apply_psu_output_on_style()
+                        print("[M101] PSU OUTPUT ON")
+                    elif val == 'OFF':
+                        if self._psu_worker: self._psu_worker.enqueue_command('OUTP OFF')
+                        self._psu_last_out = False
+                        self._apply_psu_output_off_style()
+                        print("[M100] PSU OUTPUT OFF")
+                elif sub == 'VOLT':
+                    v = max(0.0, min(61.0, float(val)))
+                    if self._psu_worker: self._psu_worker.enqueue_command(f'VOLT {v:.3f}')
+                    self._psu_last_v_set = v
+                    try:
+                        self._psu_updating_v = True
+                        self.w.edit_psu_voltage_set.setText(f'{v:.3f}')
+                    finally:
+                        self._psu_updating_v = False
+                    print(f"[M102] PSU VOLT {v:.3f} V")
+                elif sub == 'CURR':
+                    i = max(0.0, min(3.0, float(val)))
+                    if self._psu_worker: self._psu_worker.enqueue_command(f'CURR {i:.3f}')
+                    self._psu_last_i_set = i
+                    try:
+                        self._psu_updating_i = True
+                        self.w.edit_psu_current_set.setText(f'{i:.3f}')
+                    finally:
+                        self._psu_updating_i = False
+                    print(f"[M103] PSU CURR {i:.3f} A")
+
+            elif dev == 'FG':
+                if sub == 'OUTPUT' and val == 'OFF':
+                    if self._fg_worker: self._fg_worker.enqueue_command(':CHANnel1:OUTPut OFF')
+                    self._fg_last_ch1 = False
+                    self._apply_fg_ch1_style(False)
+                    print("[M108] FG CH1 OFF")
+
+                elif sub == 'FREQ':
+                    hz = float(val)
+                    if self._fg_worker:
+                        self._fg_worker.enqueue_command(f':CHANnel1:BASE:FREQuency {hz:.6g}')
+                        self._fg_worker.enqueue_command(':CHANnel1:OUTPut ON')
+                    self._fg_last_freq = hz
+                    self._fg_last_ch1 = True
+                    try:
+                        self._fg_updating = True
+                        self.w.edit_fg_frequency.setText(f'{hz:.3f}')
+                        self.w.lbl_fg_freq_val.setText(f'{hz:.3f}')
+                        self._apply_fg_ch1_style(True)
+                    finally:
+                        self._fg_updating = False
+                    print(f"[M104] FG FREQ {hz:.6g} Hz + CH1 ON")
+
+                elif sub == 'WAVE':
+                    wave = val.strip()
+                    if self._fg_worker:
+                        self._fg_worker.enqueue_command(f':CHANnel1:BASE:WAVe {wave}')
+                        self._fg_worker.enqueue_command(':CHANnel1:OUTPut ON')
+                    self._fg_last_wave = wave
+                    self._fg_last_ch1 = True
+                    display = FgWorker.WAVEFORM_DISPLAY.get(wave.upper(), wave)
+                    try:
+                        self._fg_updating = True
+                        idx = self.w.combo_fg_waveform.findText(display)
+                        if idx >= 0:
+                            self.w.combo_fg_waveform.setCurrentIndex(idx)
+                        self.w.lbl_fg_wave_val.setText(display)
+                        self._apply_fg_ch1_style(True)
+                    finally:
+                        self._fg_updating = False
+                    print(f"[M105] FG WAVE {wave} + CH1 ON")
+
+                elif sub == 'AMPL':
+                    ampl = max(0.001, min(20.0, float(val)))
+                    if self._fg_worker:
+                        self._fg_worker.enqueue_command(f':CHANnel1:BASE:AMPLitude {ampl:.4g}')
+                        self._fg_worker.enqueue_command(':CHANnel1:OUTPut ON')
+                    self._fg_last_ampl = ampl
+                    self._fg_last_ch1 = True
+                    try:
+                        self._fg_updating = True
+                        self.w.edit_fg_amplitude.setText(f'{ampl:.3f}')
+                        self.w.lbl_fg_amp_val.setText(f'{ampl:.3f}')
+                        self._apply_fg_ch1_style(True)
+                    finally:
+                        self._fg_updating = False
+                    print(f"[M106] FG AMPL {ampl:.4g} Vpp + CH1 ON")
+
+                elif sub == 'DUTY':
+                    duty = max(0, min(100, int(float(val))))
+                    if self._fg_worker:
+                        self._fg_worker.enqueue_command(f':CHANnel1:BASE:DUTY {duty}')
+                        self._fg_worker.enqueue_command(':CHANnel1:OUTPut ON')
+                    self._fg_last_duty = duty
+                    self._fg_last_ch1 = True
+                    try:
+                        self._fg_updating = True
+                        self.w.edit_fg_duty.setText(f'{duty}')
+                        self.w.lbl_fg_duty_val.setText(f'{duty}')
+                        self._apply_fg_ch1_style(True)
+                    finally:
+                        self._fg_updating = False
+                    print(f"[M107] FG DUTY {duty}% + CH1 ON")
+
+        except Exception as e:
+            print(f"⚠ M-code dispatch error [{cmd!r}]: {e}")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # END M-CODE FIFO DISPATCH
+    # ══════════════════════════════════════════════════════════════════════
     # ══════════════════════════════════════════════════════════════════════
     # END FUNCTION GENERATOR SCPI COMMUNICATION
     # ══════════════════════════════════════════════════════════════════════
@@ -4817,13 +5021,17 @@ class HandlerClass:
             print(f"✗ _send_mdi_command error ({gcode_command}): {e}")
 
     def teardown__(self):
-        """Called by QtVCP on shutdown — stop PSU and FG worker threads cleanly."""
+        """Called by QtVCP on shutdown — stop PSU, FG, and FIFO cleanly."""
         try:
             self.teardown_psu_comms()
         except Exception:
             pass
         try:
             self.teardown_fg_comms()
+        except Exception:
+            pass
+        try:
+            self.teardown_mcode_fifo()
         except Exception:
             pass
 
