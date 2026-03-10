@@ -718,6 +718,39 @@ QPushButton:pressed { background-color: #1c5980; }</string>
              </layout>
             </item>
             <item>
+             <layout class="QHBoxLayout" name="layout_camera_zoom_lock">
+              <property name="spacing"><number>6</number></property>
+              <item>
+               <spacer name="spacer_zoom_lock_left">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeType"><enum>QSizePolicy::Expanding</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="lbl_zoom_lock_status">
+                <property name="styleSheet">
+                 <string notr="true">color: #888888; font-size: 9pt; font-weight: bold; min-width: 110px;</string>
+                </property>
+                <property name="text"><string>Zoom Unlocked</string></property>
+                <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_camera_default_zoom">
+                <property name="minimumSize"><size><width>90</width><height>28</height></size></property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton { background-color: #555555; color: white; border: 2px solid #333333; font-weight: bold; border-radius: 4px; font-size: 9pt; }
+QPushButton:hover { border-color: #ffffff; }
+QPushButton:pressed { background-color: #333333; }</string>
+                </property>
+                <property name="text"><string>Default Zoom</string></property>
+                <property name="checkable"><bool>false</bool></property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
              <layout class="QHBoxLayout" name="layout_camera_zeros">
               <property name="spacing"><number>6</number></property>
               <item>

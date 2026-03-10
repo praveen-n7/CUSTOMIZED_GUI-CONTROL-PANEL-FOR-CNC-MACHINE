@@ -3193,6 +3193,10 @@ class HandlerClass:
             self._camera_crosshair = True
             self._camera_zoom = 1.0
 
+            # — Default Zoom Lock state —
+            self._camera_zoom_locked = False
+            self._camera_zoom_default = 1.0
+
             # Offset tab visibility flag — used by periodic_update() to decide
             # whether to call _populate_offset_table() on every 100 ms tick.
             self._offset_tab_visible = False
@@ -3209,6 +3213,7 @@ class HandlerClass:
             self.w.slider_camera_zoom.valueChanged.connect(self._on_camera_zoom_changed)
             self.w.btn_camera_reset_zoom.clicked.connect(self._on_camera_reset_zoom)
             self.w.btn_camera_snapshot.clicked.connect(self._on_camera_snapshot)
+            self.w.btn_camera_default_zoom.clicked.connect(self._on_camera_default_zoom)
             self.w.btn_cam_x_zero.clicked.connect(lambda: self._cam_zero_axis('X'))
             self.w.btn_cam_y_zero.clicked.connect(lambda: self._cam_zero_axis('Y'))
             self.w.btn_cam_z_zero.clicked.connect(lambda: self._cam_zero_axis('Z'))
@@ -3356,6 +3361,25 @@ class HandlerClass:
             self._camera_active = False
         except Exception as e:
             print(f"Camera stop note: {e}")
+        # Reset zoom lock state when leaving camera tab so controls
+        # are always live when the user comes back to the tab.
+        try:
+            if self._camera_zoom_locked:
+                self._camera_zoom_locked = False
+                self.w.slider_camera_zoom.setEnabled(True)
+                self.w.btn_camera_reset_zoom.setEnabled(True)
+                self.w.lbl_zoom_lock_status.setText("Zoom Unlocked")
+                self.w.lbl_zoom_lock_status.setStyleSheet(
+                    "color: #888888; font-size: 9pt; font-weight: bold; min-width: 110px;")
+                self.w.btn_camera_default_zoom.setText("Default Zoom")
+                self.w.btn_camera_default_zoom.setStyleSheet(
+                    "QPushButton { background-color: #555555; color: white;"
+                    " border: 2px solid #333333; font-weight: bold;"
+                    " border-radius: 4px; font-size: 9pt; }"
+                    "QPushButton:hover { border-color: #ffffff; }"
+                    "QPushButton:pressed { background-color: #333333; }")
+        except Exception:
+            pass
 
     def _update_camera_frame(self):
         """Grab a frame from the camera, apply zoom + crosshair, display in lbl_camera_feed."""
@@ -3410,15 +3434,120 @@ class HandlerClass:
             print(f"Camera frame error: {e}")
 
     def _on_camera_zoom_changed(self, value):
-        """Slider value 1-100 maps to zoom 1.0-10.0."""
+        """Slider value 1-100 maps to zoom 1.0-10.0. Ignored when zoom is locked."""
+        if self._camera_zoom_locked:
+            # Silently restore slider to position matching locked zoom value
+            self._sync_zoom_slider_to_value(self._camera_zoom_default)
+            return
         self._camera_zoom = 1.0 + (value - 1) * 9.0 / 99.0
         self.w.lbl_zoom_value.setText(f"{self._camera_zoom:.1f}")
 
     def _on_camera_reset_zoom(self):
-        """Reset zoom slider to minimum (1.0x)."""
+        """Reset zoom to 1.0x — blocked when zoom is locked."""
+        if self._camera_zoom_locked:
+            return
         self.w.slider_camera_zoom.setValue(1)
         self._camera_zoom = 1.0
         self.w.lbl_zoom_value.setText("1.0")
+
+    def _on_camera_default_zoom(self):
+        """
+        Toggle Default Zoom Lock.
+
+        UNLOCKED → press → saves current zoom as default and LOCKS.
+        LOCKED   → press → clears lock, restores slider to active control.
+
+        The current zoom value is taken from self._camera_zoom (which always
+        reflects the slider or the last manually set value) so the user simply
+        sets the slider where they want it and then presses Default Zoom.
+        """
+        if not self._camera_zoom_locked:
+            # ── Lock: save current zoom as the default ────────────────────
+            self._camera_zoom_default = self._camera_zoom
+            self._camera_zoom_locked = True
+
+            # Freeze slider at the locked position (blocks valueChanged)
+            self._sync_zoom_slider_to_value(self._camera_zoom_default)
+
+            # Dim slider and reset-zoom button to signal they are inactive
+            try:
+                self.w.slider_camera_zoom.setEnabled(False)
+                self.w.btn_camera_reset_zoom.setEnabled(False)
+            except Exception:
+                pass
+
+            # Update status label — green to indicate active lock
+            try:
+                self.w.lbl_zoom_lock_status.setText(
+                    f"🔒 Zoom Locked ({self._camera_zoom_default:.1f}×)")
+                self.w.lbl_zoom_lock_status.setStyleSheet(
+                    "color: #00e676; font-size: 9pt; font-weight: bold; min-width: 110px;")
+            except Exception:
+                pass
+
+            # Style button to show it is now the unlock button
+            try:
+                self.w.btn_camera_default_zoom.setStyleSheet(
+                    "QPushButton { background-color: #27ae60; color: white;"
+                    " border: 2px solid #1e8449; font-weight: bold;"
+                    " border-radius: 4px; font-size: 9pt; }"
+                    "QPushButton:hover { border-color: #ffffff; }"
+                    "QPushButton:pressed { background-color: #1e8449; }")
+                self.w.btn_camera_default_zoom.setText("Default Zoom ✓")
+            except Exception:
+                pass
+
+            print(f"✓ Camera zoom LOCKED at {self._camera_zoom_default:.1f}×")
+
+        else:
+            # ── Unlock: restore slider to active control ──────────────────
+            self._camera_zoom_locked = False
+
+            # Re-enable controls
+            try:
+                self.w.slider_camera_zoom.setEnabled(True)
+                self.w.btn_camera_reset_zoom.setEnabled(True)
+            except Exception:
+                pass
+
+            # Update status label — grey to indicate unlocked
+            try:
+                self.w.lbl_zoom_lock_status.setText("Zoom Unlocked")
+                self.w.lbl_zoom_lock_status.setStyleSheet(
+                    "color: #888888; font-size: 9pt; font-weight: bold; min-width: 110px;")
+            except Exception:
+                pass
+
+            # Restore button to default style
+            try:
+                self.w.btn_camera_default_zoom.setStyleSheet(
+                    "QPushButton { background-color: #555555; color: white;"
+                    " border: 2px solid #333333; font-weight: bold;"
+                    " border-radius: 4px; font-size: 9pt; }"
+                    "QPushButton:hover { border-color: #ffffff; }"
+                    "QPushButton:pressed { background-color: #333333; }")
+                self.w.btn_camera_default_zoom.setText("Default Zoom")
+            except Exception:
+                pass
+
+            print("✓ Camera zoom UNLOCKED")
+
+    def _sync_zoom_slider_to_value(self, zoom_value):
+        """
+        Move the slider to the position corresponding to zoom_value
+        without triggering _on_camera_zoom_changed (blockSignals).
+        Inverse of: zoom = 1.0 + (slider - 1) * 9.0 / 99.0
+                    slider = 1 + (zoom - 1.0) * 99.0 / 9.0
+        """
+        try:
+            slider_pos = int(round(1 + (zoom_value - 1.0) * 99.0 / 9.0))
+            slider_pos = max(1, min(100, slider_pos))
+            self.w.slider_camera_zoom.blockSignals(True)
+            self.w.slider_camera_zoom.setValue(slider_pos)
+            self.w.slider_camera_zoom.blockSignals(False)
+            self.w.lbl_zoom_value.setText(f"{zoom_value:.1f}")
+        except Exception as e:
+            print(f"_sync_zoom_slider_to_value error: {e}")
 
     def _on_camera_snapshot(self):
         """Save current camera frame to ~/Pictures/snapshot_<timestamp>.png."""
