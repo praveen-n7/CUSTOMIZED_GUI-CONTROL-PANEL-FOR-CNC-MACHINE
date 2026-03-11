@@ -5,7 +5,7 @@ Version: 6.2 - ADDED MAX AXIS VELOCITY DISPLAY IN DRO
 """
 
 from PyQt5.QtCore import Qt, QTimer, QObject, QEvent, QRect, QThread, pyqtSignal, pyqtSlot
-from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QMenu, QTableWidgetItem, QMessageBox, QAbstractItemView, QApplication, QSizePolicy
+from PyQt5.QtWidgets import QButtonGroup, QFileDialog, QShortcut, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QMenu, QTableWidgetItem, QMessageBox, QAbstractItemView, QApplication, QSizePolicy, QSlider, QDoubleSpinBox
 from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor, QKeySequence
 
 # Enable HiDPI scaling — must be set BEFORE QApplication is created.
@@ -16,6 +16,7 @@ try:
 except Exception:
     pass
 from qtvcp.core import Status, Action, Info
+from qtvcp.lib.preferences import Access
 import linuxcnc
 import os
 import time
@@ -24,6 +25,7 @@ import math
 STATUS = Status()
 ACTION = Action()
 INFO = Info()
+# PREFS is instantiated in initialized__() once the INI path is known
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -929,6 +931,18 @@ class HandlerClass:
         
     def initialized__(self):
         """Called after widgets are initialized"""
+        # Instantiate QtVCP Preferences — must be done here because we need
+        # the INI file path which is only reliable after QtVCP has started.
+        try:
+            import os as _os
+            _ini = _os.environ.get('INI_FILE_NAME', '')
+            _ini_dir = _os.path.dirname(_os.path.abspath(_ini)) if _ini else _os.path.expanduser('~')
+            _pref_file = _os.path.join(_ini_dir, 'my_panel.pref')
+            self.PREFS = Access(_pref_file)
+            print(f"✓ Preferences file: {_pref_file}")
+        except Exception as _e:
+            self.PREFS = None
+            print(f"⚠ Preferences init error: {_e}")
         print("="*50)
         print("QtVCP Panel - Mode-Based Visibility Control")
         print("Version 6.2 - MAX AXIS VELOCITY DISPLAY")
@@ -3193,9 +3207,11 @@ class HandlerClass:
             self._camera_crosshair = True
             self._camera_zoom = 1.0
 
-            # — Default Zoom Lock state —
-            self._camera_zoom_locked = False
-            self._camera_zoom_default = 1.0
+            # Load persisted default zoom (falls back to 1.0 if not saved yet)
+            self._camera_zoom_default = self._load_default_zoom()
+            # Apply the loaded default immediately
+            self._camera_zoom = self._camera_zoom_default
+            self._sync_zoom_slider_to_value(self._camera_zoom_default)
 
             # Offset tab visibility flag — used by periodic_update() to decide
             # whether to call _populate_offset_table() on every 100 ms tick.
@@ -3213,7 +3229,8 @@ class HandlerClass:
             self.w.slider_camera_zoom.valueChanged.connect(self._on_camera_zoom_changed)
             self.w.btn_camera_reset_zoom.clicked.connect(self._on_camera_reset_zoom)
             self.w.btn_camera_snapshot.clicked.connect(self._on_camera_snapshot)
-            self.w.btn_camera_default_zoom.clicked.connect(self._on_camera_default_zoom)
+            self.w.btn_camera_default_zoom.clicked.connect(
+                lambda: QTimer.singleShot(100, self._on_camera_default_zoom))
             self.w.btn_cam_x_zero.clicked.connect(lambda: self._cam_zero_axis('X'))
             self.w.btn_cam_y_zero.clicked.connect(lambda: self._cam_zero_axis('Y'))
             self.w.btn_cam_z_zero.clicked.connect(lambda: self._cam_zero_axis('Z'))
@@ -3361,25 +3378,7 @@ class HandlerClass:
             self._camera_active = False
         except Exception as e:
             print(f"Camera stop note: {e}")
-        # Reset zoom lock state when leaving camera tab so controls
-        # are always live when the user comes back to the tab.
-        try:
-            if self._camera_zoom_locked:
-                self._camera_zoom_locked = False
-                self.w.slider_camera_zoom.setEnabled(True)
-                self.w.btn_camera_reset_zoom.setEnabled(True)
-                self.w.lbl_zoom_lock_status.setText("Zoom Unlocked")
-                self.w.lbl_zoom_lock_status.setStyleSheet(
-                    "color: #888888; font-size: 9pt; font-weight: bold; min-width: 110px;")
-                self.w.btn_camera_default_zoom.setText("Default Zoom")
-                self.w.btn_camera_default_zoom.setStyleSheet(
-                    "QPushButton { background-color: #555555; color: white;"
-                    " border: 2px solid #333333; font-weight: bold;"
-                    " border-radius: 4px; font-size: 9pt; }"
-                    "QPushButton:hover { border-color: #ffffff; }"
-                    "QPushButton:pressed { background-color: #333333; }")
-        except Exception:
-            pass
+        # (lock/unlock removed — slider and reset button are always enabled)
 
     def _update_camera_frame(self):
         """Grab a frame from the camera, apply zoom + crosshair, display in lbl_camera_feed."""
@@ -3434,103 +3433,257 @@ class HandlerClass:
             print(f"Camera frame error: {e}")
 
     def _on_camera_zoom_changed(self, value):
-        """Slider value 1-100 maps to zoom 1.0-10.0. Ignored when zoom is locked."""
-        if self._camera_zoom_locked:
-            # Silently restore slider to position matching locked zoom value
-            self._sync_zoom_slider_to_value(self._camera_zoom_default)
-            return
+        """Slider value 1-100 maps to zoom 1.0-10.0."""
         self._camera_zoom = 1.0 + (value - 1) * 9.0 / 99.0
         self.w.lbl_zoom_value.setText(f"{self._camera_zoom:.1f}")
 
     def _on_camera_reset_zoom(self):
-        """Reset zoom to 1.0x — blocked when zoom is locked."""
-        if self._camera_zoom_locked:
-            return
+        """Reset zoom to 1.0x."""
         self.w.slider_camera_zoom.setValue(1)
         self._camera_zoom = 1.0
         self.w.lbl_zoom_value.setText("1.0")
 
     def _on_camera_default_zoom(self):
         """
-        Toggle Default Zoom Lock.
+        Save the current zoom slider value as the persistent default zoom.
 
-        UNLOCKED → press → saves current zoom as default and LOCKS.
-        LOCKED   → press → clears lock, restores slider to active control.
+        No dialog, no lock/unlock.  One press = current zoom is saved to
+        panel_state.cfg and will be restored automatically on next startup.
 
-        The current zoom value is taken from self._camera_zoom (which always
-        reflects the slider or the last manually set value) so the user simply
-        sets the slider where they want it and then presses Default Zoom.
+        Behavior:
+          1. Read the current zoom value from self._camera_zoom.
+          2. Save it into panel_state.cfg via _save_default_zoom().
+          3. Update self._camera_zoom_default so it is consistent in memory.
+          4. Update the button label to confirm the saved value.
         """
-        if not self._camera_zoom_locked:
-            # ── Lock: save current zoom as the default ────────────────────
-            self._camera_zoom_default = self._camera_zoom
-            self._camera_zoom_locked = True
+        new_default = round(self._camera_zoom, 1)
+        new_default = max(1.0, min(10.0, new_default))
 
-            # Freeze slider at the locked position (blocks valueChanged)
-            self._sync_zoom_slider_to_value(self._camera_zoom_default)
+        # Update in-memory default and persist to panel_state.cfg
+        self._camera_zoom_default = new_default
+        self._save_default_zoom(new_default)
 
-            # Dim slider and reset-zoom button to signal they are inactive
+        # Update button text to confirm the saved value
+        try:
+            self.w.btn_camera_default_zoom.setText(
+                f"Default Zoom ✓ ({new_default:.1f}×)")
+        except Exception:
+            pass
+
+        print(f"✓ Camera default zoom saved: {new_default:.1f}×  (panel_state.cfg)")
+
+    # ======================================================================= #
+    #  Unified panel state persistence — panel_state.cfg                      #
+    # ======================================================================= #
+    #
+    # All panel settings that must survive a restart are stored in a single
+    # plain-text key=value file: panel_state.cfg, located in the same config
+    # directory as the INI file.
+    #
+    # LinuxCNC NEVER reads or writes this file, so values persist reliably
+    # across every open/close cycle without being overwritten.
+    #
+    # Keys stored:
+    #   jog_speed        — jog velocity slider value (mm/min)
+    #   jog_increment    — last used jog increment (mm, or 0 for continuous)
+    #   spindle_speed    — spindle speed slider value (RPM)
+    #   feedrate         — feed override slider value (%)
+    #   rapid            — rapid override slider value (%)
+    #   camera_zoom      — default camera zoom (1.0 – 10.0×)
+    #   home_x           — joint number mapped to X home
+    #   home_y           — joint number mapped to Y home
+    #   home_z           — joint number mapped to Z home
+    #   psu_voltage      — last PSU voltage setpoint
+    #   psu_current      — last PSU current setpoint
+    #   fg_frequency     — last function-generator frequency
+    #   fg_amplitude     — last function-generator amplitude
+    #
+    # Write is atomic (write to .tmp then os.replace) so the file is never
+    # left half-written after a crash.
+    #
+    _STATE_CFG_FILENAME = 'panel_state.cfg'
+
+    # ── Default values used when the file does not exist yet ────────────────
+    _STATE_DEFAULTS = {
+        'jog_speed':     500.0,
+        'jog_increment': 10.0,
+        'spindle_speed': 1000.0,
+        'feedrate':      100.0,
+        'rapid':         100.0,
+        'camera_zoom':   1.0,
+        'home_x':        0,
+        'home_y':        1,
+        'home_z':        2,
+        'psu_voltage':   0.0,
+        'psu_current':   0.0,
+        'fg_frequency':  0.0,
+        'fg_amplitude':  0.0,
+    }
+
+    def _state_cfg_path(self):
+        """
+        Resolve the absolute path to panel_state.cfg in the active config dir.
+        Returns the path string, or None if the INI file cannot be located.
+        """
+        try:
+            ini_file = os.environ.get('INI_FILE_NAME', '').strip()
+            if not ini_file:
+                try:
+                    ini_file = (INFO.INI_FILENAME or '').strip()
+                except Exception:
+                    ini_file = ''
+            if not ini_file:
+                print("⚠ _state_cfg_path: INI_FILE_NAME not set")
+                return None
+            ini_dir = os.path.dirname(os.path.abspath(ini_file))
+            return os.path.join(ini_dir, self._STATE_CFG_FILENAME)
+        except Exception as e:
+            print(f"⚠ _state_cfg_path error: {e}")
+            return None
+
+    def _load_panel_state(self):
+        """
+        Load panel_state.cfg and return a dict of key→value.
+        Missing keys fall back to _STATE_DEFAULTS.
+        Missing file returns _STATE_DEFAULTS unchanged.
+        """
+        state = dict(self._STATE_DEFAULTS)
+        cfg_path = self._state_cfg_path()
+        if not cfg_path:
+            return state
+        try:
+            with open(cfg_path, 'r') as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or '=' not in line:
+                        continue
+                    key, _, raw = line.partition('=')
+                    key = key.strip()
+                    raw = raw.strip()
+                    if key not in state:
+                        continue
+                    default = self._STATE_DEFAULTS[key]
+                    try:
+                        state[key] = type(default)(raw)
+                    except (ValueError, TypeError):
+                        pass   # keep default on parse error
+            print(f"[load_panel_state] loaded {cfg_path}")
+        except FileNotFoundError:
+            print("[load_panel_state] panel_state.cfg not found — using defaults (first run)")
+        except Exception as e:
+            print(f"[load_panel_state] read error: {e}")
+        return state
+
+    def _save_panel_state(self):
+        """
+        Write all current panel values to panel_state.cfg atomically.
+        Called from teardown__ so the file is always up-to-date on exit.
+        Can also be called any time a key value changes.
+        """
+        cfg_path = self._state_cfg_path()
+        if not cfg_path:
+            print("[save_panel_state] FAILED: could not resolve config dir path")
+            return
+        try:
+            # ── Collect current live values ────────────────────────────────
             try:
-                self.w.slider_camera_zoom.setEnabled(False)
-                self.w.btn_camera_reset_zoom.setEnabled(False)
+                jog_speed = float(self.w.slider_jog_velocity.value())
             except Exception:
-                pass
+                jog_speed = float(getattr(self, 'jog_speed', self._STATE_DEFAULTS['jog_speed']))
 
-            # Update status label — green to indicate active lock
             try:
-                self.w.lbl_zoom_lock_status.setText(
-                    f"🔒 Zoom Locked ({self._camera_zoom_default:.1f}×)")
-                self.w.lbl_zoom_lock_status.setStyleSheet(
-                    "color: #00e676; font-size: 9pt; font-weight: bold; min-width: 110px;")
+                spindle_speed = float(self.w.slider_spindle_speed.value())
             except Exception:
-                pass
+                spindle_speed = float(getattr(self, 'spindle_speed', self._STATE_DEFAULTS['spindle_speed']))
 
-            # Style button to show it is now the unlock button
             try:
-                self.w.btn_camera_default_zoom.setStyleSheet(
-                    "QPushButton { background-color: #27ae60; color: white;"
-                    " border: 2px solid #1e8449; font-weight: bold;"
-                    " border-radius: 4px; font-size: 9pt; }"
-                    "QPushButton:hover { border-color: #ffffff; }"
-                    "QPushButton:pressed { background-color: #1e8449; }")
-                self.w.btn_camera_default_zoom.setText("Default Zoom ✓")
+                feedrate = float(self.w.slider_feedrate.value())
             except Exception:
-                pass
+                feedrate = self._STATE_DEFAULTS['feedrate']
 
-            print(f"✓ Camera zoom LOCKED at {self._camera_zoom_default:.1f}×")
+            try:
+                rapid = float(self.w.slider_rapidrate.value())
+            except Exception:
+                rapid = self._STATE_DEFAULTS['rapid']
 
+            camera_zoom  = max(1.0, min(10.0, float(getattr(self, '_camera_zoom_default', self._STATE_DEFAULTS['camera_zoom']))))
+            jog_increment = float(getattr(self, 'jog_increment', self._STATE_DEFAULTS['jog_increment']))
+            home_x        = int(getattr(self, 'home_x_joint',  self._STATE_DEFAULTS['home_x']))
+            home_y        = int(getattr(self, 'home_y_joint',  self._STATE_DEFAULTS['home_y']))
+            home_z        = int(getattr(self, 'home_z_joint',  self._STATE_DEFAULTS['home_z']))
+
+            try:
+                psu_voltage = float(self.w.edit_psu_voltage_set.text())
+            except Exception:
+                psu_voltage = self._STATE_DEFAULTS['psu_voltage']
+
+            try:
+                psu_current = float(self.w.edit_psu_current_set.text())
+            except Exception:
+                psu_current = self._STATE_DEFAULTS['psu_current']
+
+            try:
+                fg_frequency = float(self.w.edit_fg_frequency.text())
+            except Exception:
+                fg_frequency = self._STATE_DEFAULTS['fg_frequency']
+
+            try:
+                fg_amplitude = float(self.w.edit_fg_amplitude.text())
+            except Exception:
+                fg_amplitude = self._STATE_DEFAULTS['fg_amplitude']
+
+            lines = [
+                f"jog_speed={jog_speed:.6f}\n",
+                f"jog_increment={jog_increment:.6f}\n",
+                f"spindle_speed={spindle_speed:.6f}\n",
+                f"feedrate={feedrate:.6f}\n",
+                f"rapid={rapid:.6f}\n",
+                f"camera_zoom={camera_zoom:.6f}\n",
+                f"home_x={home_x}\n",
+                f"home_y={home_y}\n",
+                f"home_z={home_z}\n",
+                f"psu_voltage={psu_voltage:.6f}\n",
+                f"psu_current={psu_current:.6f}\n",
+                f"fg_frequency={fg_frequency:.6f}\n",
+                f"fg_amplitude={fg_amplitude:.6f}\n",
+            ]
+
+            tmp_path = cfg_path + ".tmp"
+            with open(tmp_path, 'w') as fh:
+                fh.writelines(lines)
+            os.replace(tmp_path, cfg_path)
+            print(f"[save_panel_state] OK — {cfg_path}")
+
+        except Exception as e:
+            print(f"[save_panel_state] FAILED: {e}")
+            import traceback as _tb; _tb.print_exc()
+
+    def _save_default_zoom(self, value):
+        """
+        Save camera_zoom to my_panel.pref via QtVCP Preferences Access object.
+        self.PREFS is instantiated in initialized__() with the correct file path.
+        """
+        clamped = max(1.0, min(10.0, float(value)))
+        self._camera_zoom_default = clamped
+        if self.PREFS is not None:
+            self.PREFS.putpref('camera_zoom', clamped, float, 'PANEL_SETTINGS')
+            print(f"[save_default_zoom] my_panel.pref updated: camera_zoom={clamped:.4f}")
         else:
-            # ── Unlock: restore slider to active control ──────────────────
-            self._camera_zoom_locked = False
+            print("[save_default_zoom] PREFS not available — value not persisted")
 
-            # Re-enable controls
-            try:
-                self.w.slider_camera_zoom.setEnabled(True)
-                self.w.btn_camera_reset_zoom.setEnabled(True)
-            except Exception:
-                pass
-
-            # Update status label — grey to indicate unlocked
-            try:
-                self.w.lbl_zoom_lock_status.setText("Zoom Unlocked")
-                self.w.lbl_zoom_lock_status.setStyleSheet(
-                    "color: #888888; font-size: 9pt; font-weight: bold; min-width: 110px;")
-            except Exception:
-                pass
-
-            # Restore button to default style
-            try:
-                self.w.btn_camera_default_zoom.setStyleSheet(
-                    "QPushButton { background-color: #555555; color: white;"
-                    " border: 2px solid #333333; font-weight: bold;"
-                    " border-radius: 4px; font-size: 9pt; }"
-                    "QPushButton:hover { border-color: #ffffff; }"
-                    "QPushButton:pressed { background-color: #333333; }")
-                self.w.btn_camera_default_zoom.setText("Default Zoom")
-            except Exception:
-                pass
-
-            print("✓ Camera zoom UNLOCKED")
+    def _load_default_zoom(self):
+        """
+        Load camera_zoom from my_panel.pref via self.PREFS.
+        self.PREFS must already be initialised before this is called
+        (it is called from setup_graphics_tabs() which runs inside initialized__()).
+        """
+        if self.PREFS is not None:
+            val = self.PREFS.getpref('camera_zoom', 1.0, float, 'PANEL_SETTINGS')
+            val = max(1.0, min(10.0, val))
+            print(f"[load_default_zoom] my_panel.pref: camera_zoom={val:.4f}")
+            return val
+        print("[load_default_zoom] PREFS not available — using default 1.0")
+        return 1.0
 
     def _sync_zoom_slider_to_value(self, zoom_value):
         """
@@ -5150,7 +5303,7 @@ class HandlerClass:
             print(f"✗ _send_mdi_command error ({gcode_command}): {e}")
 
     def teardown__(self):
-        """Called by QtVCP on shutdown — stop PSU, FG, and FIFO cleanly."""
+        """Called by QtVCP on shutdown — stop PSU, FG, FIFO, and save panel state."""
         try:
             self.teardown_psu_comms()
         except Exception:
@@ -5161,6 +5314,12 @@ class HandlerClass:
             pass
         try:
             self.teardown_mcode_fifo()
+        except Exception:
+            pass
+        # Save full panel state on shutdown.  teardown__ runs after LinuxCNC
+        # has finished writing sim.var, so panel_state.cfg is never overwritten.
+        try:
+            self._save_panel_state()
         except Exception:
             pass
 

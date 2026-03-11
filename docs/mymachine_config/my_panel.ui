@@ -84,24 +84,52 @@ QPushButton:pressed {
         </property>
         <property name="minimumSize">
          <size>
-          <width>80</width>
-          <height>36</height>
+          <width>110</width>
+          <height>52</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>130</width>
+          <height>52</height>
          </size>
         </property>
         <property name="font">
          <font>
-          <pointsize>11</pointsize>
+          <pointsize>10</pointsize>
           <weight>75</weight>
           <bold>true</bold>
          </font>
         </property>
         <property name="styleSheet">
-         <string notr="true">QPushButton { background-color: #c0392b; color: white; border: 2px solid #943126; font-weight: bold; border-radius: 4px; }
-QPushButton:hover { border-color: #ffffff; }
-QPushButton:pressed { background-color: #943126; padding-top: 7px; padding-left: 7px; }</string>
+         <string notr="true">QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #ff2200, stop:0.45 #cc1100, stop:0.5 #aa0000, stop:1 #880000);
+    color: white;
+    border: 3px solid #440000;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 10pt;
+    padding-left: 28px;
+    text-align: left;
+}
+QPushButton::before {
+    content: "";
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #ff4422, stop:0.45 #ee2200, stop:0.5 #cc1100, stop:1 #aa0000);
+    border-color: #ff6666;
+}
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #770000, stop:1 #550000);
+    border-color: #ff0000;
+    padding-top: 3px;
+}</string>
         </property>
         <property name="text">
-         <string>E-STOP</string>
+         <string>⬡ E-STOP</string>
         </property>
        </widget>
       </item>
@@ -115,24 +143,49 @@ QPushButton:pressed { background-color: #943126; padding-top: 7px; padding-left:
         </property>
         <property name="minimumSize">
          <size>
-          <width>90</width>
-          <height>36</height>
+          <width>110</width>
+          <height>52</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>130</width>
+          <height>52</height>
          </size>
         </property>
         <property name="font">
          <font>
-          <pointsize>11</pointsize>
+          <pointsize>10</pointsize>
           <weight>75</weight>
           <bold>true</bold>
          </font>
         </property>
         <property name="styleSheet">
-         <string notr="true">QPushButton { background-color: #27ae60; color: white; border: 2px solid #1e8449; font-weight: bold; border-radius: 4px; }
-QPushButton:hover { border-color: #ffffff; }
-QPushButton:pressed { background-color: #1e8449; padding-top: 7px; padding-left: 7px; }</string>
+         <string notr="true">QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #2ecc71, stop:0.45 #27ae60, stop:0.5 #1e8449, stop:1 #145a32);
+    color: white;
+    border: 3px solid #0b3d20;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 10pt;
+    padding-left: 28px;
+    text-align: left;
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #58d68d, stop:0.45 #2ecc71, stop:0.5 #27ae60, stop:1 #1e8449);
+    border-color: #aaffaa;
+}
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #0b3d20, stop:1 #145a32);
+    border-color: #2ecc71;
+    padding-top: 3px;
+}</string>
         </property>
         <property name="text">
-         <string>POWER ON</string>
+         <string>⏻ POWER ON</string>
         </property>
        </widget>
       </item>
